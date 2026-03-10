@@ -1,5 +1,5 @@
 use argon2::password_hash::rand_core::OsRng;
-use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
+use argon2::{password_hash::SaltString, Argon2, PasswordHasher, PasswordVerifier};
 use rand::Rng;
 
 pub fn hash_password(plain: &str) -> Result<String, String> {

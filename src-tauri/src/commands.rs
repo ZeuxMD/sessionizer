@@ -1,5 +1,5 @@
 use crate::config::{load_config, save_config, AppConfig};
-use crate::password::{generate_recovery_key, hash_password, verify_password};
+use crate::password::{generate_recovery_key, hash_password, verify_password as verify_pwd};
 use crate::shutdown::execute_action;
 use chrono::Utc;
 
@@ -43,20 +43,20 @@ pub fn setup_password(password: String, timeout_minutes: u64) -> Result<String, 
 #[tauri::command]
 pub fn verify_password(password: String) -> Result<bool, String> {
     let config = load_config();
-    verify_password(&password, &config.password_hash)
+    verify_pwd(&password, &config.password_hash)
 }
 
 #[tauri::command]
 pub fn verify_recovery_key(key: String) -> Result<bool, String> {
     let config = load_config();
-    verify_password(&key, &config.recovery_key_hash)
+    verify_pwd(&key, &config.recovery_key_hash)
 }
 
 #[tauri::command]
 pub fn change_password(current: String, new_password: String) -> Result<bool, String> {
     let config = load_config();
 
-    if !verify_password(&current, &config.password_hash)? {
+    if !verify_pwd(&current, &config.password_hash)? {
         return Ok(false);
     }
 
