@@ -31,8 +31,16 @@ impl Default for AppConfig {
 }
 
 fn get_config_dir() -> PathBuf {
-    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(app_data).join("sessionizer")
+    #[cfg(target_os = "windows")]
+    {
+        let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(app_data).join("sessionizer")
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(home).join(".config").join("sessionizer")
+    }
 }
 
 fn get_config_path() -> PathBuf {

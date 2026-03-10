@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "build": {
     "beforeBuildCommand": "pnpm run build",
-    "beforeDevCommand": "pnpm run dev",
+    "beforeDevCommand": "pnpm vite",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
@@ -37,17 +37,5 @@
       "icons/icon.ico"
     ]
   },
-  "plugins": {
-    "autostart": {
-      "macOSExtraArgs": [],
-      "args": ["--minimized"]
-    },
-    "notification": {
-      "all": true
-    },
-    "shell": {
-      "all": true,
-      "open": true
-    }
-  }
+  "plugins": {}
 }
