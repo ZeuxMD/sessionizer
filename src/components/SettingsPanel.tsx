@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getConfig, saveConfig, changePassword, AppConfig } from "../lib/invoke";
+import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -74,6 +75,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       }
 
       await saveConfig(cfg);
+
+      // Apply autostart after config is persisted
+      if (autostartEnabled) {
+        await enable();
+      } else {
+        await disable();
+      }
+
+      setSuccess("Settings saved successfully");
       setSuccess("Settings saved successfully");
       setTimeout(() => {
         onClose();

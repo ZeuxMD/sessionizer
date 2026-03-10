@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { setupPassword, getConfig, saveConfig } from "../lib/invoke";
+import { enable } from "@tauri-apps/plugin-autostart";
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -34,6 +35,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
     try {
       const key = await setupPassword(password, timeoutMinutes);
+      // Enable autostart during initial setup
+      await enable();
       setRecoveryKey(key);
       setStep(3);
     } catch (e) {

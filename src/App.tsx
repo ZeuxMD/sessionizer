@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { isFirstRun, startTimer, clearTimer } from "./lib/invoke";
+import { isFirstRun, startTimer, clearTimer, quitApp } from "./lib/invoke";
 import { LockScreen } from "./components/LockScreen";
 import { SetupWizard } from "./components/SetupWizard";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -13,6 +13,7 @@ function App() {
   const [view, setView] = useState<View>("loading");
   const [showSettings, setShowSettings] = useState(false);
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+  const [passwordPromptMode, setPasswordPromptMode] = useState<"settings" | "quit" | null>(null);
   const [warningMinutes, setWarningMinutes] = useState(5);
 
   useEffect(() => {
@@ -35,6 +36,7 @@ function App() {
   useEffect(() => {
     const setupListeners = async () => {
       await listen("show-settings", () => {
+        setPasswordPromptMode("settings");
         setShowPasswordPrompt(true);
       });
 
@@ -48,6 +50,11 @@ function App() {
 
       await listen("show-about", () => {
         alert("Sessionizer v1.0.0\nA parental screen-time limiter for Windows");
+      });
+
+      await listen("quit-app", () => {
+        setPasswordPromptMode("quit");
+        setShowPasswordPrompt(true);
       });
     };
 
@@ -86,10 +93,21 @@ function App() {
     await win.hide();
   }, []);
 
-  const handleSettingsPasswordSuccess = useCallback(() => {
-    setShowPasswordPrompt(false);
-    setShowSettings(true);
-  }, []);
+  const handleSettingsPasswordSuccess = useCallback(async () => {
+    if (passwordPromptMode === "quit") {
+      try{
+        await quitApp();
+      } catch (e) {
+        console.error("Failed to quit app:", e);
+        setShowPasswordPrompt(false);
+        setPasswordPromptMode(null);
+      }
+    } else {
+      setShowPasswordPrompt(false);
+      setPasswordPromptMode(null);
+      setShowSettings(true);
+    }
+  }, [passwordPromptMode]);
 
   const handleSettingsClose = useCallback(async () => {
     setShowSettings(false);

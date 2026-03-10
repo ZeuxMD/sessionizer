@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   getRemainingSeconds,
   executeShutdown,
@@ -18,6 +18,7 @@ export function useCountdown(warningMinutes: number = 5): CountdownState {
   const [isUrgent, setIsUrgent] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
   const [action, setAction] = useState<string>("shutdown");
+  const hasExecutedRef = useRef(false);
 
   const checkAndExecute = useCallback(async () => {
     try {
@@ -47,7 +48,8 @@ export function useCountdown(warningMinutes: number = 5): CountdownState {
           setIsUrgent(remaining <= 60 && remaining > 0);
           setIsExpired(remaining <= 0);
 
-          if (remaining <= 0) {
+          if (remaining <= 0 && !hasExecutedRef.current) {
+            hasExecutedRef.current = true;
             try {
               await executeShutdown(config.action);
             } catch (e) {

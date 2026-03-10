@@ -2,6 +2,7 @@ use crate::config::{load_config, save_config, AppConfig};
 use crate::password::{generate_recovery_key, hash_password, verify_password as verify_pwd};
 use crate::shutdown::execute_action;
 use chrono::Utc;
+use tauri::AppHandle;
 
 #[tauri::command]
 pub fn get_config() -> Result<AppConfig, String> {
@@ -104,4 +105,10 @@ pub fn get_remaining_seconds() -> Result<Option<u64>, String> {
     } else {
         Ok(None)
     }
+}
+
+#[tauri::command]
+pub fn quit_app(app: AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
 }

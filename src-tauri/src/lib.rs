@@ -56,6 +56,7 @@ pub fn run() {
             commands::start_timer,
             commands::clear_timer,
             commands::get_remaining_seconds,
+            commands::quit_app,
         ])
         .setup(|app| {
             log_error("Running setup...");
@@ -63,8 +64,12 @@ pub fn run() {
             let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let relock_item = MenuItem::with_id(app, "relock", "Re-lock", true, None::<&str>)?;
             let about_item = MenuItem::with_id(app, "about", "About", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
-            let menu = Menu::with_items(app, &[&settings_item, &relock_item, &about_item])?;
+            let menu = Menu::with_items(
+                app,
+                &[&settings_item, &relock_item, &about_item, &quit_item],
+            )?;
 
             // Try to create tray icon, but don't fail if it doesn't work
             match TrayIconBuilder::new()
@@ -89,6 +94,12 @@ pub fn run() {
                         "about" => {
                             if let Some(window) = app.get_webview_window("main") {
                                 let _ = window.emit("show-about", ());
+                                let _ = window.show();
+                            }
+                        }
+                        "quit" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.emit("quit-app", ());
                                 let _ = window.show();
                             }
                         }

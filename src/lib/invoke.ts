@@ -25,11 +25,11 @@ export async function isFirstRun(): Promise<boolean> {
 
 export async function setupPassword(
   password: string,
-  timeoutMinutes: number
+  timeout_minutes: number
 ): Promise<string> {
   return invoke<string>("setup_password", {
     password,
-    timeoutMinutes,
+    timeout_minutes,
   });
 }
 
@@ -43,11 +43,11 @@ export async function verifyRecoveryKey(key: string): Promise<boolean> {
 
 export async function changePassword(
   current: string,
-  newPassword: string
+  new_password: string
 ): Promise<boolean> {
   return invoke<boolean>("change_password", {
     current,
-    newPassword,
+    new_password,
   });
 }
 
@@ -65,4 +65,8 @@ export async function clearTimer(): Promise<void> {
 
 export async function getRemainingSeconds(): Promise<number | null> {
   return invoke<number | null>("get_remaining_seconds");
+}
+
+export async function quitApp(): Promise<void> {
+  return invoke("quit_app");
 }
