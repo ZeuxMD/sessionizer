@@ -1,3 +1,5 @@
+use std::fs::OpenOptions;
+use std::io::Write;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -9,14 +11,33 @@ mod config;
 mod password;
 mod shutdown;
 
+fn log_error(msg: &str) {
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("sessionizer_error.log")
+    {
+        let _ = writeln!(file, "{}", msg);
+    }
+    eprintln!("{}", msg);
+}
+
 pub fn run() {
-    tauri::Builder::default()
+    // Set up panic hook for logging
+    std::panic::set_hook(Box::new(|panic_info| {
+        log_error(&format!("PANIC: {}", panic_info));
+    }));
+
+    log_error("Starting Sessionizer...");
+
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
         ))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            log_error("Single instance triggered");
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
@@ -37,13 +58,16 @@ pub fn run() {
             commands::get_remaining_seconds,
         ])
         .setup(|app| {
+            log_error("Running setup...");
+
             let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let relock_item = MenuItem::with_id(app, "relock", "Re-lock", true, None::<&str>)?;
             let about_item = MenuItem::with_id(app, "about", "About", true, None::<&str>)?;
 
             let menu = Menu::with_items(app, &[&settings_item, &relock_item, &about_item])?;
 
-            let _tray = TrayIconBuilder::new()
+            // Try to create tray icon, but don't fail if it doesn't work
+            match TrayIconBuilder::new()
                 .menu(&menu)
                 .on_menu_event(|app, event| {
                     let id = event.id.as_ref();
@@ -85,8 +109,13 @@ pub fn run() {
                         }
                     }
                 })
-                .build(app)?;
+                .build(app)
+            {
+                Ok(_tray) => log_error("Tray icon created successfully"),
+                Err(e) => log_error(&format!("Failed to create tray icon: {}", e)),
+            }
 
+            log_error("Setup complete");
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -97,6 +126,10 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+
+    match result {
+        Ok(_) => log_error("App exited normally"),
+        Err(e) => log_error(&format!("App error: {}", e)),
+    }
 }

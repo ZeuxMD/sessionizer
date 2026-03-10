@@ -15,20 +15,13 @@
       {
         "title": "Sessionizer",
         "label": "main",
-        "fullscreen": true,
-        "alwaysOnTop": true,
-        "decorations": false,
+        "width": 800,
+        "height": 600,
         "resizable": false,
-        "skipTaskbar": true,
         "center": true,
         "visible": true
       }
     ],
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": false,
-      "menuOnLeftClick": false
-    },
     "security": {
       "csp": null
     }
