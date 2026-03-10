@@ -16,7 +16,7 @@ export async function getConfig(): Promise<AppConfig> {
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {
-  return invoke("save_config", { config });
+  return invoke("save_config_cmd", { config });
 }
 
 export async function isFirstRun(): Promise<boolean> {
