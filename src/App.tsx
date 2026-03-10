@@ -5,6 +5,7 @@ import { isFirstRun, startTimer, clearTimer } from "./lib/invoke";
 import { LockScreen } from "./components/LockScreen";
 import { SetupWizard } from "./components/SetupWizard";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { PasswordInput } from "./components/PasswordInput";
 
 type View = "loading" | "setup" | "lock" | "unlocked";
 
@@ -92,8 +93,7 @@ function App() {
 
   const handleSettingsClose = useCallback(async () => {
     setShowSettings(false);
-    const win = getCurrentWindow();
-    await win.hide();
+    setView("lock");
   }, []);
 
   const handleReLock = useCallback(async () => {

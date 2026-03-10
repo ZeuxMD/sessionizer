@@ -35,7 +35,12 @@ export function useCountdown(warningMinutes: number = 5): CountdownState {
   useEffect(() => {
     const fetchRemaining = async () => {
       try {
-        const remaining = await getRemainingSeconds();
+        const [remaining, config] = await Promise.all([
+          getRemainingSeconds(),
+          getConfig(),
+        ]);
+        setAction(config.action);
+        
         if (remaining !== null) {
           setRemainingSeconds(remaining);
           setIsWarning(remaining <= warningMinutes * 60 && remaining > 60);
@@ -44,7 +49,7 @@ export function useCountdown(warningMinutes: number = 5): CountdownState {
 
           if (remaining <= 0) {
             try {
-              await executeShutdown(action);
+              await executeShutdown(config.action);
             } catch (e) {
               console.error("Failed to execute shutdown:", e);
             }
@@ -58,7 +63,7 @@ export function useCountdown(warningMinutes: number = 5): CountdownState {
     fetchRemaining();
     const interval = setInterval(fetchRemaining, 1000);
     return () => clearInterval(interval);
-  }, [warningMinutes, action]);
+  }, [warningMinutes]);
 
   return { remainingSeconds, isWarning, isUrgent, isExpired };
 }
