@@ -28,8 +28,8 @@ chrono = "0.4"
 incremental = true
 
 [profile.release]
-codegen-units = 1
-lto = true
+codegen-units = 16
+lto = "thin"
 opt-level = "s"
 panic = "abort"
 strip = true
