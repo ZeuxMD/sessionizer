@@ -6,6 +6,12 @@ on:
       - "v*"
   pull_request:
     branches: [master]
+    paths:
+      - "src-tauri/**"
+      - "src/**"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - ".github/workflows/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -40,18 +46,32 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm'
+          cache: "pnpm"
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
       - name: Cache Cargo registry
         uses: Swatinem/rust-cache@v2
 
+      - name: Cache frontend build
+        uses: actions/cache@v4
+        id: frontend-cache
+        with:
+          path: dist
+          key: frontend-${{ runner.os }}-${{ hashFiles('src/**', 'pnpm-lock.yaml') }}
+
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        if: steps.frontend-cache.outputs.cache-hit != 'true'
+        run: pnpm build
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0.6.1
@@ -59,10 +79,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
         with:
           tagName: v__VERSION__
-          releaseName: 'Sessionizer v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
+          releaseName: "Sessionizer v__VERSION__"
+          releaseBody: "See the assets to download this version and install."
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
