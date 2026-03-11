@@ -3,9 +3,10 @@ import { verifyPassword } from "../lib/invoke";
 
 interface PasswordInputProps {
   onSuccess: () => void;
+  onCancel?: () => void;
 }
 
-export function PasswordInput({ onSuccess }: PasswordInputProps) {
+export function PasswordInput({ onSuccess, onCancel }: PasswordInputProps) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +74,15 @@ export function PasswordInput({ onSuccess }: PasswordInputProps) {
       >
         {loading ? "Unlocking..." : "Unlock"}
       </button>
+      {onCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          className="w-full mt-2 bg-slate-600 hover:bg-slate-500 rounded-lg px-6 py-3 font-semibold transition-colors text-white"
+        >
+          Cancel
+        </button>
+      )}
     </form>
   );
 }
