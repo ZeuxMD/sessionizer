@@ -55,6 +55,8 @@ pub fn run() {
             commands::execute_shutdown,
             commands::start_timer,
             commands::clear_timer,
+            commands::pause_timer,
+            commands::resume_timer,
             commands::get_remaining_seconds,
             commands::quit_app,
         ])

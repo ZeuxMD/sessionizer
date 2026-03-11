@@ -13,6 +13,8 @@ pub struct AppConfig {
     pub first_run_complete: bool,
     #[serde(rename = "timer_start_timestamp")]
     pub timer_start_timestamp: Option<u64>,
+    #[serde(rename = "timer_paused_at")]
+    pub timer_paused_at: Option<u64>,
 }
 
 impl Default for AppConfig {
@@ -26,6 +28,7 @@ impl Default for AppConfig {
             autostart_enabled: true,
             first_run_complete: false,
             timer_start_timestamp: None,
+            timer_paused_at: None,
         }
     }
 }

@@ -9,6 +9,7 @@ export interface AppConfig {
   autostart_enabled: boolean;
   first_run_complete: boolean;
   timer_start_timestamp: number | null;
+  timer_paused_at: number | null;
 }
 
 export async function getConfig(): Promise<AppConfig> {
@@ -61,6 +62,14 @@ export async function startTimer(): Promise<void> {
 
 export async function clearTimer(): Promise<void> {
   return invoke("clear_timer");
+}
+
+export async function pauseTimer(): Promise<void> {
+  return invoke("pause_timer");
+}
+
+export async function resumeTimer(): Promise<void> {
+  return invoke("resume_timer");
 }
 
 export async function getRemainingSeconds(): Promise<number | null> {

@@ -35,6 +35,7 @@ pub fn setup_password(password: String, timeout_minutes: u64) -> Result<String, 
         autostart_enabled: true,
         first_run_complete: true,
         timer_start_timestamp: Some(Utc::now().timestamp() as u64),
+        timer_paused_at: None,
     };
 
     save_config(&config)?;
@@ -85,7 +86,35 @@ pub fn start_timer() -> Result<(), String> {
 pub fn clear_timer() -> Result<(), String> {
     let mut config = load_config();
     config.timer_start_timestamp = None;
+    config.timer_paused_at = None;
     save_config(&config)
+}
+
+#[tauri::command]
+pub fn pause_timer() -> Result<(), String> {
+    let mut config = load_config();
+    if config.timer_start_timestamp.is_some() && config.timer_paused_at.is_none() {
+        config.timer_paused_at = Some(Utc::now().timestamp() as u64);
+        save_config(&config)
+    } else {
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub fn resume_timer() -> Result<(), String> {
+    let mut config = load_config();
+    if let (Some(start_timestamp), Some(paused_at)) =
+        (config.timer_start_timestamp, config.timer_paused_at)
+    {
+        let now = Utc::now().timestamp() as u64;
+        let pause_duration = now.saturating_sub(paused_at);
+        config.timer_start_timestamp = Some(start_timestamp.saturating_add(pause_duration));
+        config.timer_paused_at = None;
+        save_config(&config)
+    } else {
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -95,7 +124,9 @@ pub fn get_remaining_seconds() -> Result<Option<u64>, String> {
     if let Some(start_timestamp) = config.timer_start_timestamp {
         let now = Utc::now().timestamp() as u64;
         let total_seconds = config.timeout_minutes * 60;
-        let elapsed = now.saturating_sub(start_timestamp);
+
+        let effective_now = config.timer_paused_at.unwrap_or(now);
+        let elapsed = effective_now.saturating_sub(start_timestamp);
 
         if elapsed >= total_seconds {
             Ok(Some(0))

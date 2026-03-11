@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { isFirstRun, startTimer, clearTimer, quitApp, getRemainingSeconds, executeShutdown, getConfig } from "./lib/invoke";
+import { isFirstRun, startTimer, clearTimer, pauseTimer, resumeTimer, quitApp, getRemainingSeconds, executeShutdown, getConfig } from "./lib/invoke";
 import { LockScreen } from "./components/LockScreen";
 import { SetupWizard } from "./components/SetupWizard";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -15,6 +15,16 @@ function App() {
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [passwordPromptMode, setPasswordPromptMode] = useState<"settings" | "quit" | null>(null);
   const [warningMinutes, setWarningMinutes] = useState(5);
+  const viewRef = useRef(view);
+  const showPasswordPromptRef = useRef(showPasswordPrompt);
+
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+
+  useEffect(() => {
+    showPasswordPromptRef.current = showPasswordPrompt;
+  }, [showPasswordPrompt]);
 
   useEffect(() => {
     const init = async () => {
@@ -55,6 +65,29 @@ function App() {
       await listen("quit-app", () => {
         setPasswordPromptMode("quit");
         setShowPasswordPrompt(true);
+      });
+
+      await listen("tauri://visibility-change", async (event) => {
+        const isVisible = !(event.payload as { visible: boolean }).visible;
+        if (viewRef.current === "lock" || showPasswordPromptRef.current) {
+          if (isVisible) {
+            await resumeTimer();
+          } else {
+            await pauseTimer();
+          }
+        }
+      });
+
+      await listen("tauri://blur", async () => {
+        if (viewRef.current === "lock" || showPasswordPromptRef.current) {
+          await pauseTimer();
+        }
+      });
+
+      await listen("tauri://focus", async () => {
+        if (viewRef.current === "lock" || showPasswordPromptRef.current) {
+          await resumeTimer();
+        }
       });
     };
 
