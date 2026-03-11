@@ -2,9 +2,10 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    tags:
+      - "v*"
   pull_request:
-    branches: [main]
+    branches: [master]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -57,8 +58,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: v__VERSION__
-          releaseName: 'Sessionizer v__VERSION__'
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Sessionizer ${{ github.ref_name }}'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
