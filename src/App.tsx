@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { isFirstRun, startTimer, clearTimer, quitApp } from "./lib/invoke";
+import { isFirstRun, startTimer, clearTimer, quitApp, getRemainingSeconds, executeShutdown, getConfig } from "./lib/invoke";
 import { LockScreen } from "./components/LockScreen";
 import { SetupWizard } from "./components/SetupWizard";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -126,6 +126,40 @@ function App() {
     await win.setFullscreen(true);
     await win.show();
   }, []);
+
+  // Timer check that runs at App level - continues even when password prompt is shown
+  const hasExecutedRef = useRef(false);
+  
+  useEffect(() => {
+    // Only run timer check when in lock mode or when password prompt is shown
+    const shouldRunTimer = view === "lock" || showPasswordPrompt;
+    
+    if (!shouldRunTimer) return;
+    
+    const checkTimer = async () => {
+      try {
+        const [remaining, config] = await Promise.all([
+          getRemainingSeconds(),
+          getConfig(),
+        ]);
+        
+        if (remaining !== null && remaining <= 0 && !hasExecutedRef.current) {
+          hasExecutedRef.current = true;
+          try {
+            await executeShutdown(config.action);
+          } catch (e) {
+            console.error("Failed to execute shutdown:", e);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to check timer:", e);
+      }
+    };
+
+    checkTimer();
+    const interval = setInterval(checkTimer, 1000);
+    return () => clearInterval(interval);
+  }, [view, showPasswordPrompt]);
 
   if (showSettings) {
     return <SettingsPanel onClose={handleSettingsClose} />;
