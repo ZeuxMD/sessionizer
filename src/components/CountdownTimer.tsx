@@ -1,7 +1,8 @@
-import { useCountdown } from "../hooks/useCountdown";
-
 interface CountdownTimerProps {
-  warningMinutes: number;
+  remainingSeconds: number | null;
+  totalSeconds: number;
+  isWarning: boolean;
+  isUrgent: boolean;
 }
 
 function formatTime(seconds: number): string {
@@ -10,17 +11,21 @@ function formatTime(seconds: number): string {
   return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
-export function CountdownTimer({ warningMinutes }: CountdownTimerProps) {
-  const { remainingSeconds, isWarning, isUrgent } = useCountdown(warningMinutes);
-
+export function CountdownTimer({
+  remainingSeconds,
+  totalSeconds,
+  isWarning,
+  isUrgent,
+}: CountdownTimerProps) {
   if (remainingSeconds === null) {
     return (
       <div className="text-6xl font-bold text-slate-400">--:--</div>
     );
   }
 
-  const totalMinutes = 60;
-  const progress = Math.max(0, Math.min(100, (remainingSeconds / (totalMinutes * 60)) * 100));
+  const progress = totalSeconds > 0
+    ? Math.max(0, Math.min(100, (remainingSeconds / totalSeconds) * 100))
+    : 0;
 
   const themeColor = isUrgent 
     ? "text-red-500" 

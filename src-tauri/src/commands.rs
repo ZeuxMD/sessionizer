@@ -17,7 +17,7 @@ pub fn save_config_cmd(config: AppConfig) -> Result<(), String> {
 #[tauri::command]
 pub fn is_first_run() -> Result<bool, String> {
     let config = load_config();
-    Ok(!config.first_run_complete && config.password_hash.is_empty())
+    Ok(!config.first_run_complete)
 }
 
 #[tauri::command]
@@ -33,8 +33,8 @@ pub fn setup_password(password: String, timeout_minutes: u64) -> Result<String, 
         warning_minutes: 5,
         action: "shutdown".to_string(),
         autostart_enabled: true,
-        first_run_complete: true,
-        timer_start_timestamp: Some(Utc::now().timestamp() as u64),
+        first_run_complete: false,
+        timer_start_timestamp: None,
         timer_paused_at: None,
     };
 
@@ -52,6 +52,22 @@ pub fn verify_password(password: String) -> Result<bool, String> {
 pub fn verify_recovery_key(key: String) -> Result<bool, String> {
     let config = load_config();
     verify_pwd(&key, &config.recovery_key_hash)
+}
+
+#[tauri::command]
+pub fn reset_password_with_recovery(key: String, new_password: String) -> Result<bool, String> {
+    let config = load_config();
+
+    if !verify_pwd(&key, &config.recovery_key_hash)? {
+        return Ok(false);
+    }
+
+    let new_hash = hash_password(&new_password)?;
+    let mut new_config = config;
+    new_config.password_hash = new_hash;
+
+    save_config(&new_config)?;
+    Ok(true)
 }
 
 #[tauri::command]

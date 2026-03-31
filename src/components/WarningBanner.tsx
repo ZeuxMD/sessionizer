@@ -10,7 +10,7 @@ export function WarningBanner({ isWarning, isUrgent }: WarningBannerProps) {
     return (
       <div className="w-full max-w-md mx-auto mb-6 bg-red-600/20 border border-red-500 rounded-lg p-4 animate-pulse-urgent">
         <p className="text-red-500 font-semibold text-center">
-          Shutting down in less than a minute
+          Less than a minute remains
         </p>
       </div>
     );

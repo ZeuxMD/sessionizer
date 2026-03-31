@@ -75,7 +75,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             <h1 className="text-3xl font-bold text-white text-center mb-4">Welcome to Sessionizer</h1>
             <p className="text-slate-400 text-center mb-8">
               Sessionizer helps you manage screen time for your children. 
-              Set a time limit, and the computer will lock when time runs out.
+              Set a time limit, and the computer can shut down, restart, or sleep when time runs out.
             </p>
             <div className="space-y-4 text-slate-300">
               <div className="flex items-start gap-3">

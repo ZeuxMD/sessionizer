@@ -4,9 +4,18 @@ import { verifyPassword } from "../lib/invoke";
 interface PasswordInputProps {
   onSuccess: () => void;
   onCancel?: () => void;
+  submitLabel?: string;
+  loadingLabel?: string;
+  placeholder?: string;
 }
 
-export function PasswordInput({ onSuccess, onCancel }: PasswordInputProps) {
+export function PasswordInput({
+  onSuccess,
+  onCancel,
+  submitLabel = "Unlock",
+  loadingLabel = "Unlocking...",
+  placeholder = "Enter password",
+}: PasswordInputProps) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +51,7 @@ export function PasswordInput({ onSuccess, onCancel }: PasswordInputProps) {
           type={showPassword ? "text" : "password"}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Enter password"
+          placeholder={placeholder}
           className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white pr-12"
           autoFocus
         />
@@ -72,7 +81,7 @@ export function PasswordInput({ onSuccess, onCancel }: PasswordInputProps) {
         disabled={loading || !password.trim()}
         className="w-full mt-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-lg px-6 py-3 font-semibold transition-colors"
       >
-        {loading ? "Unlocking..." : "Unlock"}
+        {loading ? loadingLabel : submitLabel}
       </button>
       {onCancel && (
         <button

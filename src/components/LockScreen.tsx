@@ -3,6 +3,7 @@ import { CountdownTimer } from "./CountdownTimer";
 import { PasswordInput } from "./PasswordInput";
 import { WarningBanner } from "./WarningBanner";
 import { RecoveryPrompt } from "./RecoveryPrompt";
+import { useCountdown } from "../hooks/useCountdown";
 
 interface LockScreenProps {
   onUnlock: () => void;
@@ -11,6 +12,8 @@ interface LockScreenProps {
 
 export function LockScreen({ onUnlock, warningMinutes }: LockScreenProps) {
   const [showRecovery, setShowRecovery] = useState(false);
+  const { remainingSeconds, totalSeconds, isWarning, isUrgent } =
+    useCountdown(warningMinutes);
 
   const handleRecoverySuccess = () => {
     setShowRecovery(false);
@@ -29,9 +32,14 @@ export function LockScreen({ onUnlock, warningMinutes }: LockScreenProps) {
         <h1 className="text-3xl font-bold text-white mb-2">Sessionizer</h1>
         <p className="text-slate-400 mb-8">Screen time is limited</p>
 
-        <WarningBanner isWarning={warningMinutes > 0} isUrgent={false} />
+        <WarningBanner isWarning={isWarning} isUrgent={isUrgent} />
 
-        <CountdownTimer warningMinutes={warningMinutes} />
+        <CountdownTimer
+          remainingSeconds={remainingSeconds}
+          totalSeconds={totalSeconds}
+          isWarning={isWarning}
+          isUrgent={isUrgent}
+        />
 
         <div className="mt-8">
           <PasswordInput onSuccess={onUnlock} />

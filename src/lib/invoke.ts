@@ -42,6 +42,16 @@ export async function verifyRecoveryKey(key: string): Promise<boolean> {
   return invoke<boolean>("verify_recovery_key", { key });
 }
 
+export async function resetPasswordWithRecovery(
+  key: string,
+  new_password: string
+): Promise<boolean> {
+  return invoke<boolean>("reset_password_with_recovery", {
+    key,
+    new_password,
+  });
+}
+
 export async function changePassword(
   current: string,
   new_password: string

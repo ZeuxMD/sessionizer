@@ -1,12 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  getRemainingSeconds,
-  executeShutdown,
-  getConfig,
-} from "../lib/invoke";
+import { useState, useEffect } from "react";
+import { getRemainingSeconds, getConfig } from "../lib/invoke";
 
 interface CountdownState {
   remainingSeconds: number | null;
+  totalSeconds: number;
   isWarning: boolean;
   isUrgent: boolean;
   isExpired: boolean;
@@ -14,24 +11,10 @@ interface CountdownState {
 
 export function useCountdown(warningMinutes: number = 5): CountdownState {
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const [totalSeconds, setTotalSeconds] = useState(0);
   const [isWarning, setIsWarning] = useState(false);
   const [isUrgent, setIsUrgent] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
-  const [action, setAction] = useState<string>("shutdown");
-  const hasExecutedRef = useRef(false);
-
-  const checkAndExecute = useCallback(async () => {
-    try {
-      const config = await getConfig();
-      setAction(config.action);
-    } catch (e) {
-      console.error("Failed to get config:", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    checkAndExecute();
-  }, [checkAndExecute]);
 
   useEffect(() => {
     const fetchRemaining = async () => {
@@ -40,22 +23,18 @@ export function useCountdown(warningMinutes: number = 5): CountdownState {
           getRemainingSeconds(),
           getConfig(),
         ]);
-        setAction(config.action);
+        setTotalSeconds(config.timeout_minutes * 60);
         
         if (remaining !== null) {
           setRemainingSeconds(remaining);
           setIsWarning(remaining <= warningMinutes * 60 && remaining > 60);
           setIsUrgent(remaining <= 60 && remaining > 0);
           setIsExpired(remaining <= 0);
-
-          if (remaining <= 0 && !hasExecutedRef.current) {
-            hasExecutedRef.current = true;
-            try {
-              await executeShutdown(config.action);
-            } catch (e) {
-              console.error("Failed to execute shutdown:", e);
-            }
-          }
+        } else {
+          setRemainingSeconds(null);
+          setIsWarning(false);
+          setIsUrgent(false);
+          setIsExpired(false);
         }
       } catch (e) {
         console.error("Failed to get remaining seconds:", e);
@@ -67,5 +46,5 @@ export function useCountdown(warningMinutes: number = 5): CountdownState {
     return () => clearInterval(interval);
   }, [warningMinutes]);
 
-  return { remainingSeconds, isWarning, isUrgent, isExpired };
+  return { remainingSeconds, totalSeconds, isWarning, isUrgent, isExpired };
 }

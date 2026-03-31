@@ -23,11 +23,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     const fetchConfig = async () => {
       try {
         const cfg = await getConfig();
+        const autostartState = await isEnabled().catch(() => cfg.autostart_enabled);
         setConfig(cfg);
         setTimeoutMinutes(cfg.timeout_minutes);
         setWarningMinutes(cfg.warning_minutes);
         setAction(cfg.action);
-        setAutostartEnabled(cfg.autostart_enabled);
+        setAutostartEnabled(autostartState);
       } catch (e) {
         setError("Failed to load settings");
       }
@@ -83,7 +84,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         await disable();
       }
 
-      setSuccess("Settings saved successfully");
       setSuccess("Settings saved successfully");
       setTimeout(() => {
         onClose();

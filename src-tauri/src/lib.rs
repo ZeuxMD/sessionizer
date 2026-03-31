@@ -51,6 +51,7 @@ pub fn run() {
             commands::setup_password,
             commands::verify_password,
             commands::verify_recovery_key,
+            commands::reset_password_with_recovery,
             commands::change_password,
             commands::execute_shutdown,
             commands::start_timer,

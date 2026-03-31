@@ -1,6 +1,6 @@
 # Sessionizer
 
-A Windows desktop application for parental screen-time management. Sessionizer launches on boot, displays a panel with a countdown timer, and can shut down the PC when time runs out. Adults can enter a password to dismiss the lock and use the PC normally.
+A Windows desktop application for parental screen-time management. Sessionizer launches on boot, displays an 800x600 session panel with a countdown timer, and can shut down the PC when time runs out. Adults can enter a password to dismiss the panel and use the PC normally.
 
 ## Features
 
@@ -51,7 +51,7 @@ The built executable will be at `src-tauri/target/release/sessionizer.exe`.
 1. Run the application — the setup wizard appears
 2. Set a password and configure the timeout duration (default: 60 minutes)
 3. A recovery key is generated — save this in a safe place
-4. The lock screen appears and the timer starts
+4. The session panel appears and the timer starts
 
 ### Normal Operation
 
@@ -59,6 +59,7 @@ The built executable will be at `src-tauri/target/release/sessionizer.exe`.
 - A timer panel displays remaining time until the PC is automatically shut down
 - Enter the password to stop the timer
 - Access system tray options: Settings, Re-lock, About, Quit
+- Re-locking requires the password so the timer cannot be reset accidentally or by a child
 - Session time, action when the time runs out (sleep, shutdown, restart) and resetting password can be configured via the settings panel accessed from the system tray
 
 ### Timer States
@@ -72,9 +73,9 @@ The built executable will be at `src-tauri/target/release/sessionizer.exe`.
 
 ### Recovery
 
-1. Click "Forgot password?" on the lock screen
+1. Click "Forgot password?" on the session panel
 2. Enter the 16-character recovery key
-3. Access settings to reset the password
+3. Set a new password
 
 ## Configuration
 
