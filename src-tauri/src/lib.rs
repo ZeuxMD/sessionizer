@@ -9,7 +9,9 @@ use tauri::{
 mod commands;
 mod config;
 mod password;
+mod session;
 mod shutdown;
+mod windows_session;
 
 fn log_error(msg: &str) {
     if let Ok(mut file) = OpenOptions::new()
@@ -23,6 +25,8 @@ fn log_error(msg: &str) {
 }
 
 pub fn run() {
+    let is_autostart_launch = std::env::args().any(|arg| arg == "--minimized");
+
     // Set up panic hook for logging
     std::panic::set_hook(Box::new(|panic_info| {
         log_error(&format!("PANIC: {}", panic_info));
@@ -47,6 +51,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::save_config_cmd,
+            commands::update_settings,
             commands::is_first_run,
             commands::setup_password,
             commands::verify_password,
@@ -59,20 +64,39 @@ pub fn run() {
             commands::pause_timer,
             commands::resume_timer,
             commands::get_remaining_seconds,
+            commands::mark_warning_notification_sent,
             commands::quit_app,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             log_error("Running setup...");
+
+            if let Err(e) = session::apply_startup_policy(is_autostart_launch) {
+                log_error(&format!("Failed to apply startup policy: {}", e));
+            }
 
             let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let relock_item = MenuItem::with_id(app, "relock", "Re-lock", true, None::<&str>)?;
+            let resume_item =
+                MenuItem::with_id(app, "resume-session", "Resume Session", true, None::<&str>)?;
             let about_item = MenuItem::with_id(app, "about", "About", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
             let menu = Menu::with_items(
                 app,
-                &[&settings_item, &relock_item, &about_item, &quit_item],
+                &[
+                    &settings_item,
+                    &relock_item,
+                    &resume_item,
+                    &about_item,
+                    &quit_item,
+                ],
             )?;
+
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(e) = windows_session::install(&window) {
+                    log_error(&format!("Failed to install Windows session hook: {}", e));
+                }
+            }
 
             // Try to create tray icon, but don't fail if it doesn't work
             match TrayIconBuilder::new()
@@ -92,6 +116,11 @@ pub fn run() {
                                 let _ = window.emit("re-lock", ());
                                 let _ = window.show();
                                 let _ = window.set_focus();
+                            }
+                        }
+                        "resume-session" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.emit("resume-session", ());
                             }
                         }
                         "about" => {

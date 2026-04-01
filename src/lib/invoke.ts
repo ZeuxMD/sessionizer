@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
+export type PauseReason = "manual" | "system";
+
 export interface AppConfig {
   password_hash: string;
   recovery_key_hash: string;
@@ -10,6 +12,8 @@ export interface AppConfig {
   first_run_complete: boolean;
   timer_start_timestamp: number | null;
   timer_paused_at: number | null;
+  pause_reason: PauseReason | null;
+  warning_notification_sent: boolean;
 }
 
 export async function getConfig(): Promise<AppConfig> {
@@ -18,6 +22,20 @@ export async function getConfig(): Promise<AppConfig> {
 
 export async function saveConfig(config: AppConfig): Promise<void> {
   return invoke("save_config_cmd", { config });
+}
+
+export async function updateSettings(
+  timeoutMinutes: number,
+  warningMinutes: number,
+  action: string,
+  autostartEnabled: boolean
+): Promise<void> {
+  return invoke("update_settings", {
+    timeout_minutes: timeoutMinutes,
+    warning_minutes: warningMinutes,
+    action,
+    autostart_enabled: autostartEnabled,
+  });
 }
 
 export async function isFirstRun(): Promise<boolean> {
@@ -84,6 +102,10 @@ export async function resumeTimer(): Promise<void> {
 
 export async function getRemainingSeconds(): Promise<number | null> {
   return invoke<number | null>("get_remaining_seconds");
+}
+
+export async function markWarningNotificationSent(): Promise<void> {
+  return invoke("mark_warning_notification_sent");
 }
 
 export async function quitApp(): Promise<void> {

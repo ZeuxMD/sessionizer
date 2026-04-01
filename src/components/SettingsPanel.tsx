@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getConfig, saveConfig, changePassword, AppConfig } from "../lib/invoke";
+import { getConfig, updateSettings, changePassword, AppConfig } from "../lib/invoke";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 
 interface SettingsPanelProps {
@@ -44,14 +44,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setSuccess(null);
 
     try {
-      let cfg: AppConfig = {
-        ...config,
-        timeout_minutes: timeoutMinutes,
-        warning_minutes: warningMinutes,
-        action,
-        autostart_enabled: autostartEnabled,
-      };
-
       if (newPassword) {
         if (newPassword.length < 4) {
           setError("New password must be at least 4 characters");
@@ -75,7 +67,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         setCurrentPassword("");
       }
 
-      await saveConfig(cfg);
+      await updateSettings(
+        timeoutMinutes,
+        warningMinutes,
+        action,
+        autostartEnabled
+      );
+
+      const latestConfig = await getConfig();
+      setConfig(latestConfig);
 
       // Apply autostart after config is persisted
       if (autostartEnabled) {

@@ -2,7 +2,15 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PauseReason {
+    Manual,
+    System,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppConfig {
     pub password_hash: String,
     pub recovery_key_hash: String,
@@ -15,6 +23,8 @@ pub struct AppConfig {
     pub timer_start_timestamp: Option<u64>,
     #[serde(rename = "timer_paused_at")]
     pub timer_paused_at: Option<u64>,
+    pub pause_reason: Option<PauseReason>,
+    pub warning_notification_sent: bool,
 }
 
 impl Default for AppConfig {
@@ -29,6 +39,8 @@ impl Default for AppConfig {
             first_run_complete: false,
             timer_start_timestamp: None,
             timer_paused_at: None,
+            pause_reason: None,
+            warning_notification_sent: false,
         }
     }
 }

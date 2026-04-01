@@ -9,6 +9,8 @@ A Windows desktop application for parental screen-time management. Sessionizer l
 - **Recovery Key**: 16-character alphanumeric recovery key for password reset
 - **System Tray**: Minimize to tray when unlocked; access settings, re-lock, or about
 - **Persistent Timer**: Timer survives app crashes, sleep, and hibernation via timestamp-based tracking
+- **Desktop Notifications**: Shows a one-time warning notification when time is almost up
+- **Protected Pause**: Adults can pause a child session after entering the password
 
 ## Tech Stack
 
@@ -51,15 +53,20 @@ The built executable will be at `src-tauri/target/release/sessionizer.exe`.
 1. Run the application — the setup wizard appears
 2. Set a password and configure the timeout duration (default: 60 minutes)
 3. A recovery key is generated — save this in a safe place
-4. The session panel appears and the timer starts
+4. Finishing setup starts the first session immediately
 
 ### Normal Operation
 
-- On boot, the app launches automatically (if autostart is enabled)
+- On Windows login, the app launches automatically (if autostart is enabled) and starts a fresh child session
 - A timer panel displays remaining time until the PC is automatically shut down
-- Enter the password to stop the timer
+- Enter the password to clear the current child session and dismiss the panel
+- Use "Pause Session" to freeze the current child session after password confirmation
+- Resume a paused session from the tray with "Resume Session"
+- Sessionizer sends one desktop notification when the remaining time first reaches the warning window
 - Access system tray options: Settings, Re-lock, About, Quit
-- Re-locking requires the password so the timer cannot be reset accidentally or by a child
+- Re-locking requires the password and starts a fresh child session
+- Logging out or putting the PC to sleep pauses the session and preserves the remaining time
+- Shutting down or restarting the PC resets the current child session instead of resuming it later
 - Session time, action when the time runs out (sleep, shutdown, restart) and resetting password can be configured via the settings panel accessed from the system tray
 
 ### Timer States
@@ -90,7 +97,10 @@ Config file location: `%APPDATA%/sessionizer/config.json`
   "action": "shutdown",
   "autostart_enabled": true,
   "first_run_complete": true,
-  "timer_start_timestamp": null
+  "timer_start_timestamp": null,
+  "timer_paused_at": null,
+  "pause_reason": null,
+  "warning_notification_sent": false
 }
 ```
 

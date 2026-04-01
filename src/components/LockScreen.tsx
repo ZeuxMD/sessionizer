@@ -7,10 +7,15 @@ import { useCountdown } from "../hooks/useCountdown";
 
 interface LockScreenProps {
   onUnlock: () => void;
+  onPause: () => void;
   warningMinutes: number;
 }
 
-export function LockScreen({ onUnlock, warningMinutes }: LockScreenProps) {
+export function LockScreen({
+  onUnlock,
+  onPause,
+  warningMinutes,
+}: LockScreenProps) {
   const [showRecovery, setShowRecovery] = useState(false);
   const { remainingSeconds, totalSeconds, isWarning, isUrgent } =
     useCountdown(warningMinutes);
@@ -44,6 +49,13 @@ export function LockScreen({ onUnlock, warningMinutes }: LockScreenProps) {
         <div className="mt-8">
           <PasswordInput onSuccess={onUnlock} />
         </div>
+
+        <button
+          onClick={onPause}
+          className="w-full mt-4 bg-slate-700 hover:bg-slate-600 rounded-lg px-6 py-3 font-semibold transition-colors text-white"
+        >
+          Pause Session
+        </button>
 
         <button
           onClick={() => setShowRecovery(true)}

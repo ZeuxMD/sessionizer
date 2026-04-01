@@ -1,7 +1,7 @@
-use crate::config::{load_config, save_config, AppConfig};
+use crate::config::{load_config, save_config, AppConfig, PauseReason};
 use crate::password::{generate_recovery_key, hash_password, verify_password as verify_pwd};
+use crate::session;
 use crate::shutdown::execute_action;
-use chrono::Utc;
 use tauri::AppHandle;
 
 #[tauri::command]
@@ -11,6 +11,21 @@ pub fn get_config() -> Result<AppConfig, String> {
 
 #[tauri::command]
 pub fn save_config_cmd(config: AppConfig) -> Result<(), String> {
+    save_config(&config)
+}
+
+#[tauri::command]
+pub fn update_settings(
+    timeout_minutes: u64,
+    warning_minutes: u64,
+    action: String,
+    autostart_enabled: bool,
+) -> Result<(), String> {
+    let mut config = load_config();
+    config.timeout_minutes = timeout_minutes;
+    config.warning_minutes = warning_minutes;
+    config.action = action;
+    config.autostart_enabled = autostart_enabled;
     save_config(&config)
 }
 
@@ -36,6 +51,8 @@ pub fn setup_password(password: String, timeout_minutes: u64) -> Result<String, 
         first_run_complete: false,
         timer_start_timestamp: None,
         timer_paused_at: None,
+        pause_reason: None,
+        warning_notification_sent: false,
     };
 
     save_config(&config)?;
@@ -94,23 +111,25 @@ pub fn execute_shutdown(action: String) -> Result<(), String> {
 #[tauri::command]
 pub fn start_timer() -> Result<(), String> {
     let mut config = load_config();
-    config.timer_start_timestamp = Some(Utc::now().timestamp() as u64);
+    session::start_session(&mut config, session::current_timestamp());
     save_config(&config)
 }
 
 #[tauri::command]
 pub fn clear_timer() -> Result<(), String> {
     let mut config = load_config();
-    config.timer_start_timestamp = None;
-    config.timer_paused_at = None;
+    session::clear_session(&mut config);
     save_config(&config)
 }
 
 #[tauri::command]
 pub fn pause_timer() -> Result<(), String> {
     let mut config = load_config();
-    if config.timer_start_timestamp.is_some() && config.timer_paused_at.is_none() {
-        config.timer_paused_at = Some(Utc::now().timestamp() as u64);
+    if session::pause_session(
+        &mut config,
+        PauseReason::Manual,
+        session::current_timestamp(),
+    ) {
         save_config(&config)
     } else {
         Ok(())
@@ -120,13 +139,7 @@ pub fn pause_timer() -> Result<(), String> {
 #[tauri::command]
 pub fn resume_timer() -> Result<(), String> {
     let mut config = load_config();
-    if let (Some(start_timestamp), Some(paused_at)) =
-        (config.timer_start_timestamp, config.timer_paused_at)
-    {
-        let now = Utc::now().timestamp() as u64;
-        let pause_duration = now.saturating_sub(paused_at);
-        config.timer_start_timestamp = Some(start_timestamp.saturating_add(pause_duration));
-        config.timer_paused_at = None;
+    if session::resume_session(&mut config, session::current_timestamp()) {
         save_config(&config)
     } else {
         Ok(())
@@ -136,21 +149,16 @@ pub fn resume_timer() -> Result<(), String> {
 #[tauri::command]
 pub fn get_remaining_seconds() -> Result<Option<u64>, String> {
     let config = load_config();
+    Ok(session::get_remaining_seconds(&config))
+}
 
-    if let Some(start_timestamp) = config.timer_start_timestamp {
-        let now = Utc::now().timestamp() as u64;
-        let total_seconds = config.timeout_minutes * 60;
-
-        let effective_now = config.timer_paused_at.unwrap_or(now);
-        let elapsed = effective_now.saturating_sub(start_timestamp);
-
-        if elapsed >= total_seconds {
-            Ok(Some(0))
-        } else {
-            Ok(Some(total_seconds - elapsed))
-        }
+#[tauri::command]
+pub fn mark_warning_notification_sent() -> Result<(), String> {
+    let mut config = load_config();
+    if session::mark_warning_notification_sent(&mut config) {
+        save_config(&config)
     } else {
-        Ok(None)
+        Ok(())
     }
 }
 

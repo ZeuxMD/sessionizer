@@ -2,7 +2,7 @@ import { useState } from "react";
 import { verifyPassword } from "../lib/invoke";
 
 interface PasswordInputProps {
-  onSuccess: () => void;
+  onSuccess: () => void | Promise<void>;
   onCancel?: () => void;
   submitLabel?: string;
   loadingLabel?: string;
@@ -21,6 +21,12 @@ export function PasswordInput({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const resetState = () => {
+    setPassword("");
+    setError(null);
+    setShowPassword(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!password.trim()) return;
@@ -31,7 +37,8 @@ export function PasswordInput({
     try {
       const valid = await verifyPassword(password);
       if (valid) {
-        onSuccess();
+        resetState();
+        await onSuccess();
       } else {
         setError("Incorrect password");
         setPassword("");
@@ -42,6 +49,11 @@ export function PasswordInput({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCancel = () => {
+    resetState();
+    onCancel?.();
   };
 
   return (
@@ -86,7 +98,7 @@ export function PasswordInput({
       {onCancel && (
         <button
           type="button"
-          onClick={onCancel}
+          onClick={handleCancel}
           className="w-full mt-2 bg-slate-600 hover:bg-slate-500 rounded-lg px-6 py-3 font-semibold transition-colors text-white"
         >
           Cancel
