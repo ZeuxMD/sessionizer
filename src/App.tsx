@@ -175,7 +175,7 @@ function App() {
       unlistenFns.push(
         await listen("show-about", () => {
           alert(
-            "Sessionizer v1.0.0\nA parental screen-time session panel for Windows",
+            "Sessionizer v1.1.0\nA parental screen-time session panel for Windows",
           );
         }),
       );

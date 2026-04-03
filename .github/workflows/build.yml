@@ -143,6 +143,29 @@ jobs:
         if: steps.frontend-cache.outputs.cache-hit != 'true'
         run: pnpm build
 
+      - name: Validate release version
+        shell: bash
+        run: |
+          package_version="$(node -p "require('./package.json').version")"
+          tauri_version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -n 1)"
+          tag_version="${GITHUB_REF_NAME#v}"
+
+          if [ "$package_version" != "$tauri_version" ] || [ "$package_version" != "$cargo_version" ]; then
+            echo "Version mismatch detected:"
+            echo "package.json: $package_version"
+            echo "src-tauri/tauri.conf.json: $tauri_version"
+            echo "src-tauri/Cargo.toml: $cargo_version"
+            exit 1
+          fi
+
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "Tag/version mismatch detected:"
+            echo "tag: $GITHUB_REF_NAME"
+            echo "app version: $package_version"
+            exit 1
+          fi
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0.6.1
         env:
@@ -152,9 +175,9 @@ jobs:
           RUSTC_WRAPPER: sccache
           SCCACHE_GHA_ENABLED: "true"
         with:
-          tagName: v__VERSION__
-          releaseName: "Sessionizer v__VERSION__"
+          tagName: ${{ github.ref_name }}
+          releaseName: "Sessionizer ${{ github.ref_name }}"
           releaseBody: "See the assets to download this version and install."
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}
