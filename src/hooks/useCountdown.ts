@@ -17,12 +17,14 @@ export function useCountdown(warningMinutes: number = 5): CountdownState {
   const [isExpired, setIsExpired] = useState(false);
 
   useEffect(() => {
+    let isActive = true;
     const fetchRemaining = async () => {
       try {
         const [remaining, config] = await Promise.all([
           getRemainingSeconds(),
           getConfig(),
         ]);
+        if (!isActive) return;
         setTotalSeconds(config.timeout_minutes * 60);
 
         if (remaining !== null) {
@@ -37,13 +39,18 @@ export function useCountdown(warningMinutes: number = 5): CountdownState {
           setIsExpired(false);
         }
       } catch (e) {
-        console.error("Failed to get remaining seconds:", e);
+        if (isActive) {
+          console.error("Failed to get remaining seconds:", e);
+        }
       }
     };
 
     fetchRemaining();
     const interval = setInterval(fetchRemaining, 1000);
-    return () => clearInterval(interval);
+    return () => {
+      isActive = false;
+      clearInterval(interval);
+    };
   }, [warningMinutes]);
 
   return { remainingSeconds, totalSeconds, isWarning, isUrgent, isExpired };
