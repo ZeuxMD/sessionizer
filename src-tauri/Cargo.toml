@@ -28,6 +28,8 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+specta = "=2.0.0-rc.20"
+tauri-specta = { version = "=2.0.0-rc.20", features = ["javascript", "typescript"] }
 
 [profile.dev]
 incremental = true
