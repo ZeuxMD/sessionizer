@@ -34,6 +34,33 @@ pub fn run() {
 
     log_error("Starting Sessionizer...");
 
+        let specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
+            .commands(tauri_specta::collect_commands![
+                commands::get_config,
+                commands::finish_setup,
+                commands::update_settings,
+                commands::is_first_run,
+                commands::setup_password,
+                commands::verify_password,
+                commands::verify_recovery_key,
+                commands::reset_password_with_recovery,
+                commands::change_password,
+                commands::execute_shutdown,
+                commands::start_timer,
+                commands::clear_timer,
+                commands::clear_timer_for_next_login,
+                commands::pause_timer,
+                commands::resume_timer,
+                commands::get_remaining_seconds,
+                commands::mark_warning_notification_sent,
+                commands::quit_app,
+            ]);
+            
+        #[cfg(debug_assertions)]
+        specta_builder
+            .export(tauri_specta::ts::ExportConfiguration::new().bigint(tauri_specta::ts::BigIntExportBehavior::Number), "../src/lib/bindings.ts")
+            .expect("Failed to export typescript bindings");
+
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -48,26 +75,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![
-            commands::get_config,
-            commands::save_config_cmd,
-            commands::update_settings,
-            commands::is_first_run,
-            commands::setup_password,
-            commands::verify_password,
-            commands::verify_recovery_key,
-            commands::reset_password_with_recovery,
-            commands::change_password,
-            commands::execute_shutdown,
-            commands::start_timer,
-            commands::clear_timer,
-            commands::clear_timer_for_next_login,
-            commands::pause_timer,
-            commands::resume_timer,
-            commands::get_remaining_seconds,
-            commands::mark_warning_notification_sent,
-            commands::quit_app,
-        ])
+        .invoke_handler(specta_builder.invoke_handler())
         .setup(move |app| {
             log_error("Running setup...");
 
@@ -175,5 +183,39 @@ pub fn run() {
     match result {
         Ok(_) => log_error("App exited normally"),
         Err(e) => log_error(&format!("App error: {}", e)),
+    }
+}
+
+#[cfg(test)]
+mod bindings {
+    use super::*;
+    
+    #[test]
+    fn export_bindings() {
+        let specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
+            .commands(tauri_specta::collect_commands![
+                commands::get_config,
+                commands::finish_setup,
+                commands::update_settings,
+                commands::is_first_run,
+                commands::setup_password,
+                commands::verify_password,
+                commands::verify_recovery_key,
+                commands::reset_password_with_recovery,
+                commands::change_password,
+                commands::execute_shutdown,
+                commands::start_timer,
+                commands::clear_timer,
+                commands::clear_timer_for_next_login,
+                commands::pause_timer,
+                commands::resume_timer,
+                commands::get_remaining_seconds,
+                commands::mark_warning_notification_sent,
+                commands::quit_app,
+            ]);
+            
+        specta_builder
+            .export(tauri_specta::ts::ExportConfiguration::new().bigint(tauri_specta::ts::BigIntExportBehavior::Number), "../src/lib/bindings.ts")
+            .expect("Failed to export typescript bindings");
     }
 }

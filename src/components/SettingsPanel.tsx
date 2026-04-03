@@ -3,7 +3,7 @@ import {
   getConfig,
   updateSettings,
   changePassword,
-  type AppConfig,
+  type FrontendConfig,
 } from "../lib/invoke";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 
@@ -12,7 +12,7 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
-  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [config, setConfig] = useState<FrontendConfig | null>(null);
   const [timeoutMinutes, setTimeoutMinutes] = useState(60);
   const [warningMinutes, setWarningMinutes] = useState(5);
   const [action, setAction] = useState("shutdown");

@@ -308,12 +308,16 @@ function App() {
       return;
     }
 
+    let isActive = true;
+
     const checkTimer = async () => {
       try {
         const [remaining, config] = await Promise.all([
           getRemainingSeconds(),
           getConfig(),
         ]);
+        
+        if (!isActive) return;
 
         if (config.timer_start_timestamp !== lastTimerStartRef.current) {
           lastTimerStartRef.current = config.timer_start_timestamp;
@@ -343,8 +347,10 @@ function App() {
 
           try {
             let permissionGranted = await isPermissionGranted();
+            if (!isActive) return;
             if (!permissionGranted) {
               permissionGranted = (await requestPermission()) === "granted";
+              if (!isActive) return;
             }
 
             if (permissionGranted) {
@@ -364,8 +370,10 @@ function App() {
           } catch (e) {
             console.error("Failed to send warning notification:", e);
           } finally {
-            warningNotificationHandledRef.current = true;
-            warningNotificationPendingRef.current = false;
+            if (isActive) {
+              warningNotificationHandledRef.current = true;
+              warningNotificationPendingRef.current = false;
+            }
           }
         }
 
@@ -375,11 +383,16 @@ function App() {
 
         hasExecutedRef.current = true;
         await clearTimerForNextLogin();
+        
+        if (!isActive) return;
+        
         setView("unlocked");
         await getCurrentWindow().hide();
         await executeShutdown(config.action);
       } catch (e) {
-        console.error("Failed to check timer:", e);
+        if (isActive) {
+          console.error("Failed to check timer:", e);
+        }
       }
     };
 
@@ -388,7 +401,10 @@ function App() {
       void checkTimer();
     }, 1000);
 
-    return () => window.clearInterval(interval);
+    return () => {
+      isActive = false;
+      window.clearInterval(interval);
+    };
   }, [view]);
 
   const passwordPromptTitle =

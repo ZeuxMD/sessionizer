@@ -3,18 +3,55 @@ use crate::password::{generate_recovery_key, hash_password, verify_password as v
 use crate::session;
 use crate::shutdown::execute_action;
 use tauri::AppHandle;
+use serde::Serialize;
 
-#[tauri::command]
-pub fn get_config() -> Result<AppConfig, String> {
-    Ok(load_config())
+#[derive(Serialize, specta::Type)]
+pub struct FrontendConfig {
+    pub timeout_minutes: u64,
+    pub warning_minutes: u64,
+    pub action: String,
+    pub autostart_enabled: bool,
+    pub first_run_complete: bool,
+    pub session_start_pending: bool,
+    pub timer_start_timestamp: Option<u64>,
+    pub timer_paused_at: Option<u64>,
+    pub pause_reason: Option<PauseReason>,
+    pub warning_notification_sent: bool,
+}
+
+impl From<AppConfig> for FrontendConfig {
+    fn from(config: AppConfig) -> Self {
+        Self {
+            timeout_minutes: config.timeout_minutes,
+            warning_minutes: config.warning_minutes,
+            action: config.action,
+            autostart_enabled: config.autostart_enabled,
+            first_run_complete: config.first_run_complete,
+            session_start_pending: config.session_start_pending,
+            timer_start_timestamp: config.timer_start_timestamp,
+            timer_paused_at: config.timer_paused_at,
+            pause_reason: config.pause_reason,
+            warning_notification_sent: config.warning_notification_sent,
+        }
+    }
 }
 
 #[tauri::command]
-pub fn save_config_cmd(config: AppConfig) -> Result<(), String> {
+#[specta::specta]
+pub fn get_config() -> Result<FrontendConfig, String> {
+    Ok(load_config().into())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn finish_setup() -> Result<(), String> {
+    let mut config = load_config();
+    config.first_run_complete = true;
     save_config(&config)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn update_settings(
     timeout_minutes: u64,
     warning_minutes: u64,
@@ -30,12 +67,14 @@ pub fn update_settings(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn is_first_run() -> Result<bool, String> {
     let config = load_config();
     Ok(!config.first_run_complete)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn setup_password(password: String, timeout_minutes: u64) -> Result<String, String> {
     let recovery_key = generate_recovery_key();
     let password_hash = hash_password(&password)?;
@@ -61,18 +100,21 @@ pub fn setup_password(password: String, timeout_minutes: u64) -> Result<String, 
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn verify_password(password: String) -> Result<bool, String> {
     let config = load_config();
     verify_pwd(&password, &config.password_hash)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn verify_recovery_key(key: String) -> Result<bool, String> {
     let config = load_config();
     verify_pwd(&key, &config.recovery_key_hash)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn reset_password_with_recovery(key: String, new_password: String) -> Result<bool, String> {
     let config = load_config();
 
@@ -89,6 +131,7 @@ pub fn reset_password_with_recovery(key: String, new_password: String) -> Result
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn change_password(current: String, new_password: String) -> Result<bool, String> {
     let config = load_config();
 
@@ -105,11 +148,13 @@ pub fn change_password(current: String, new_password: String) -> Result<bool, St
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn execute_shutdown(action: String) -> Result<(), String> {
     execute_action(&action)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn start_timer() -> Result<(), String> {
     let mut config = load_config();
     session::start_session(&mut config, session::current_timestamp());
@@ -117,6 +162,7 @@ pub fn start_timer() -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn clear_timer() -> Result<(), String> {
     let mut config = load_config();
     session::clear_session(&mut config);
@@ -125,6 +171,7 @@ pub fn clear_timer() -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn clear_timer_for_next_login() -> Result<(), String> {
     let mut config = load_config();
     session::clear_session(&mut config);
@@ -133,6 +180,7 @@ pub fn clear_timer_for_next_login() -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn pause_timer() -> Result<(), String> {
     let mut config = load_config();
     if session::pause_session(
@@ -147,6 +195,7 @@ pub fn pause_timer() -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn resume_timer() -> Result<(), String> {
     let mut config = load_config();
     if session::resume_session(&mut config, session::current_timestamp()) {

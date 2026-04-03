@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum PauseReason {
     Manual,
@@ -55,12 +55,14 @@ impl Default for AppConfig {
 fn get_config_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
-        let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+        let app_data = std::env::var("APPDATA")
+            .or_else(|_| std::env::var("USERPROFILE").map(|p| format!("{}\\AppData\\Roaming", p)))
+            .unwrap_or_else(|_| "C:\\ProgramData".to_string());
         PathBuf::from(app_data).join("sessionizer")
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/var/opt".to_string());
         PathBuf::from(home).join(".config").join("sessionizer")
     }
 }

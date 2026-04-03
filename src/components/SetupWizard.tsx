@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { setupPassword, getConfig, saveConfig } from "../lib/invoke";
+import { setupPassword, finishSetup } from "../lib/invoke";
 import { enable } from "@tauri-apps/plugin-autostart";
 
 interface SetupWizardProps {
@@ -63,8 +63,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     }
 
     try {
-      const config = await getConfig();
-      await saveConfig({ ...config, first_run_complete: true });
+      await finishSetup();
       onComplete();
     } catch {
       setError("Failed to complete setup");

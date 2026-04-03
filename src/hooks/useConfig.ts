@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { getConfig, type AppConfig } from "../lib/invoke";
+import { getConfig, type FrontendConfig } from "../lib/invoke";
 
 export function useConfig() {
-  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [config, setConfig] = useState<FrontendConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(async () => {
