@@ -21,7 +21,7 @@ pub fn verify_password(plain: &str, hash: &str) -> Result<bool, String> {
 
 pub fn generate_recovery_key() -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let mut rng = rand::rngs::OsRng::default();
+    let mut rng = rand::rngs::OsRng;
     (0..16)
         .map(|_| {
             let idx = rng.gen_range(0..CHARSET.len());

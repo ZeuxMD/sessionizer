@@ -1,0 +1,138 @@
+schema_version: 1
+project:
+  name: Sessionizer
+  mode: existing
+  archetype: desktop-app
+  dominant_ecosystem: typescript
+  repo_topology: single-repo
+  template:
+    stack: tauri-vite-react-ts-pnpm
+    feedback_loop: tauri-vite-react-ts-pnpm-strict
+  rationale:
+    - The product is a Tauri desktop app with a typed React frontend and a native Rust boundary that needs deterministic checks.
+    - The repo already centralizes invoke wrappers and Tauri commands, so low-noise architecture rules can enforce those seams immediately.
+maturity:
+  current: vibes
+  target: architecture-as-code
+toolchain:
+  verified_on: "2026-04-03"
+  strategy: policy-aware-before-approval
+  runtime:
+    name: nodejs
+    version: "24.14.1"
+    source: https://nodejs.org/dist/index.json
+  secondary_runtimes:
+    - name: rust
+      version: "1.94.1"
+      source: https://static.rust-lang.org/dist/channel-rust-stable.toml
+  tools:
+    - name: pnpm
+      purpose: package-manager
+      version: "10.33.0"
+      source: https://www.npmjs.com/package/pnpm
+      rationale: Deterministic lockfile-driven installs for the frontend toolchain.
+    - name: typescript
+      purpose: typecheck
+      version: "6.0.2"
+      source: https://www.npmjs.com/package/typescript
+      rationale: Strict compile-time checks across the React surface and support files.
+    - name: "@biomejs/biome"
+      purpose: lint-and-format
+      version: "2.4.10"
+      source: https://www.npmjs.com/package/@biomejs/biome
+      rationale: One maintained frontend surface for formatting and linting with low configuration noise.
+    - name: vitest
+      purpose: test
+      version: "4.1.2"
+      source: https://www.npmjs.com/package/vitest
+      rationale: Fast unit tests for extracted frontend logic while the repo grows broader regression coverage.
+    - name: vite
+      purpose: build
+      version: "8.0.3"
+      source: https://www.npmjs.com/package/vite
+      rationale: Canonical frontend build surface for the Tauri shell.
+    - name: "@tauri-apps/cli"
+      purpose: desktop-cli
+      version: "2.10.1"
+      source: https://www.npmjs.com/package/@tauri-apps/cli
+      rationale: Canonical Tauri developer workflow for local desktop runs and packaging.
+  policy:
+    runtime:
+      max_bump: minor
+      channel: lts
+      line: "24"
+      rationale: Stay on the approved Node LTS major and absorb minor or patch updates within that line.
+    tools:
+      default_max_bump: patch
+      overrides:
+        - name: pnpm
+          max_bump: minor
+          rationale: Keep the package manager current within the approved major for lockfile and security fixes.
+        - name: "@tauri-apps/cli"
+          max_bump: minor
+          rationale: Tauri v2 minor releases are worth adopting once the local loop stays green.
+approval:
+  status: approved
+  approved_on: "2026-04-03"
+  approved_scope:
+    - bootstrap
+    - architecture-boundaries
+    - ci
+  notes: Record Rust as a verified secondary runtime for this Tauri app; Guardian freshness remains primary-runtime-driven in this phase.
+commands:
+  install: make install
+  format: make format
+  lint: make lint
+  typecheck: make typecheck
+  test: make test
+  check: make check
+gates:
+  local:
+    - format-check
+    - lint
+    - typecheck
+    - architecture
+  ci:
+    - format-check
+    - lint
+    - typecheck
+    - architecture
+    - test
+    - build
+architecture:
+  boundaries:
+    - id: invoke-wrapper-only
+      rule: Keep @tauri-apps/api/core imports in src/lib/invoke.ts only.
+      enforcement: scripts/check-architecture.mjs
+    - id: tauri-command-module-only
+      rule: "Keep #[tauri::command] handlers in src-tauri/src/commands.rs and keep business logic in helper modules."
+      enforcement: scripts/check-architecture.mjs
+  forbidden_patterns:
+    - id: no-direct-invoke-in-ui
+      rule: Do not call invoke() from React components or hooks directly.
+      enforcement: scripts/check-architecture.mjs
+phases:
+  - phase_id: bootstrap
+    status: applied
+    summary: Add deterministic local commands for formatting, linting, typechecking, tests, and build validation.
+  - phase_id: architecture-boundaries
+    status: applied
+    summary: Enforce the existing frontend invoke and Rust command seams with a deterministic scan.
+  - phase_id: ratchet
+    status: planned
+    summary: Expand timer and settings regression coverage once the first bug-fix batch exposes repeatable failure patterns.
+deferred_rules:
+  - id: session-flow-regression-suite
+    reason: The current app needs a few more extracted seams before end-to-end timer and settings cases can be tested with low noise.
+promotion_policy:
+  repeat_threshold: 2
+  require_low_noise: true
+  allowed_targets:
+    - contract
+    - tool-config
+    - custom-test
+    - ci
+    - template-catalog
+drift_policy:
+  source_of_truth: observed-repo-with-contract-reconciliation
+  require_approval: true

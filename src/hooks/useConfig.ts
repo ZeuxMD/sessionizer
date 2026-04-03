@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
-import { getConfig, AppConfig } from "../lib/invoke";
+import { useCallback, useEffect, useState } from "react";
+import { getConfig, type AppConfig } from "../lib/invoke";
 
 export function useConfig() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refetch = async () => {
+  const refetch = useCallback(async () => {
     setLoading(true);
     try {
       const cfg = await getConfig();
@@ -15,11 +15,11 @@ export function useConfig() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    refetch();
-  }, []);
+    void refetch();
+  }, [refetch]);
 
   return { config, loading, refetch };
 }

@@ -10,6 +10,7 @@ export interface AppConfig {
   action: string;
   autostart_enabled: boolean;
   first_run_complete: boolean;
+  session_start_pending: boolean;
   timer_start_timestamp: number | null;
   timer_paused_at: number | null;
   pause_reason: PauseReason | null;
@@ -28,7 +29,7 @@ export async function updateSettings(
   timeoutMinutes: number,
   warningMinutes: number,
   action: string,
-  autostartEnabled: boolean
+  autostartEnabled: boolean,
 ): Promise<void> {
   return invoke("update_settings", {
     timeout_minutes: timeoutMinutes,
@@ -44,7 +45,7 @@ export async function isFirstRun(): Promise<boolean> {
 
 export async function setupPassword(
   password: string,
-  timeout_minutes: number
+  timeout_minutes: number,
 ): Promise<string> {
   return invoke<string>("setup_password", {
     password,
@@ -62,7 +63,7 @@ export async function verifyRecoveryKey(key: string): Promise<boolean> {
 
 export async function resetPasswordWithRecovery(
   key: string,
-  new_password: string
+  new_password: string,
 ): Promise<boolean> {
   return invoke<boolean>("reset_password_with_recovery", {
     key,
@@ -72,7 +73,7 @@ export async function resetPasswordWithRecovery(
 
 export async function changePassword(
   current: string,
-  new_password: string
+  new_password: string,
 ): Promise<boolean> {
   return invoke<boolean>("change_password", {
     current,
@@ -90,6 +91,10 @@ export async function startTimer(): Promise<void> {
 
 export async function clearTimer(): Promise<void> {
   return invoke("clear_timer");
+}
+
+export async function clearTimerForNextLogin(): Promise<void> {
+  return invoke("clear_timer_for_next_login");
 }
 
 export async function pauseTimer(): Promise<void> {

@@ -1,5 +1,10 @@
-import { useState, useEffect } from "react";
-import { getConfig, updateSettings, changePassword, AppConfig } from "../lib/invoke";
+import { useEffect, useRef, useState } from "react";
+import {
+  getConfig,
+  updateSettings,
+  changePassword,
+  type AppConfig,
+} from "../lib/invoke";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 
 interface SettingsPanelProps {
@@ -16,31 +21,47 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const closeTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     const fetchConfig = async () => {
       try {
         const cfg = await getConfig();
-        const autostartState = await isEnabled().catch(() => cfg.autostart_enabled);
+        const autostartState = await isEnabled().catch(
+          () => cfg.autostart_enabled,
+        );
         setConfig(cfg);
         setTimeoutMinutes(cfg.timeout_minutes);
         setWarningMinutes(cfg.warning_minutes);
         setAction(cfg.action);
         setAutostartEnabled(autostartState);
-      } catch (e) {
+      } catch {
         setError("Failed to load settings");
       }
     };
-    fetchConfig();
+    void fetchConfig();
+
+    return () => {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current);
+      }
+    };
   }, []);
 
   const handleSave = async () => {
     if (!config) return;
 
+    if (closeTimeoutRef.current !== null) {
+      window.clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+
     setLoading(true);
     setError(null);
+    setWarning(null);
     setSuccess(null);
 
     try {
@@ -71,24 +92,39 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         timeoutMinutes,
         warningMinutes,
         action,
-        autostartEnabled
+        autostartEnabled,
       );
 
       const latestConfig = await getConfig();
       setConfig(latestConfig);
 
-      // Apply autostart after config is persisted
+      let autostartWarning: string | null = null;
       if (autostartEnabled) {
-        await enable();
+        try {
+          await enable();
+        } catch {
+          autostartWarning =
+            "Settings were saved, but Sessionizer could not enable Start with Windows. Retry this in Settings.";
+        }
       } else {
-        await disable();
+        try {
+          await disable();
+        } catch {
+          autostartWarning =
+            "Settings were saved, but Sessionizer could not disable Start with Windows. Retry this in Settings.";
+        }
       }
 
       setSuccess("Settings saved successfully");
-      setTimeout(() => {
-        onClose();
-      }, 1000);
-    } catch (e) {
+      setWarning(autostartWarning);
+
+      if (autostartWarning === null) {
+        closeTimeoutRef.current = window.setTimeout(() => {
+          closeTimeoutRef.current = null;
+          onClose();
+        }, 1000);
+      }
+    } catch {
       setError("Failed to save settings");
     } finally {
       setLoading(false);
@@ -101,20 +137,41 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-white">Settings</h2>
           <button
+            type="button"
             onClick={onClose}
             className="text-slate-400 hover:text-white"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
 
         {error && (
-          <p className="text-red-500 text-center mb-4 text-sm bg-red-500/10 p-2 rounded">{error}</p>
+          <p className="text-red-500 text-center mb-4 text-sm bg-red-500/10 p-2 rounded">
+            {error}
+          </p>
+        )}
+        {warning && (
+          <p className="text-amber-300 text-center mb-4 text-sm bg-amber-500/10 p-2 rounded">
+            {warning}
+          </p>
         )}
         {success && (
-          <p className="text-green-500 text-center mb-4 text-sm bg-green-500/10 p-2 rounded">{success}</p>
+          <p className="text-green-500 text-center mb-4 text-sm bg-green-500/10 p-2 rounded">
+            {success}
+          </p>
         )}
 
         <div className="space-y-6">
@@ -155,7 +212,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </div>
 
           <div>
-            <label className="block text-slate-400 mb-2 text-sm">When Time Runs Out:</label>
+            <label className="block text-slate-400 mb-2 text-sm">
+              When Time Runs Out:
+            </label>
             <div className="flex gap-4">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -194,10 +253,14 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </div>
 
           <div className="border-t border-slate-700 pt-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Change Password</h3>
+            <h3 className="text-lg font-semibold text-white mb-4">
+              Change Password
+            </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-slate-400 mb-2 text-sm">Current Password</label>
+                <label className="block text-slate-400 mb-2 text-sm">
+                  Current Password
+                </label>
                 <input
                   type="password"
                   value={currentPassword}
@@ -207,7 +270,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 />
               </div>
               <div>
-                <label className="block text-slate-400 mb-2 text-sm">New Password</label>
+                <label className="block text-slate-400 mb-2 text-sm">
+                  New Password
+                </label>
                 <input
                   type="password"
                   value={newPassword}
@@ -217,7 +282,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 />
               </div>
               <div>
-                <label className="block text-slate-400 mb-2 text-sm">Confirm New Password</label>
+                <label className="block text-slate-400 mb-2 text-sm">
+                  Confirm New Password
+                </label>
                 <input
                   type="password"
                   value={confirmNewPassword}
@@ -243,8 +310,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         </div>
 
         <button
+          type="button"
           onClick={handleSave}
-          disabled={loading}
+          disabled={loading || !config}
           className="w-full mt-8 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-lg px-6 py-3 font-semibold transition-colors"
         >
           {loading ? "Saving..." : "Save Settings"}

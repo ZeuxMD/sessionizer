@@ -19,12 +19,18 @@ pub struct AppConfig {
     pub action: String,
     pub autostart_enabled: bool,
     pub first_run_complete: bool,
+    #[serde(default = "default_session_start_pending")]
+    pub session_start_pending: bool,
     #[serde(rename = "timer_start_timestamp")]
     pub timer_start_timestamp: Option<u64>,
     #[serde(rename = "timer_paused_at")]
     pub timer_paused_at: Option<u64>,
     pub pause_reason: Option<PauseReason>,
     pub warning_notification_sent: bool,
+}
+
+fn default_session_start_pending() -> bool {
+    true
 }
 
 impl Default for AppConfig {
@@ -37,6 +43,7 @@ impl Default for AppConfig {
             action: "shutdown".to_string(),
             autostart_enabled: true,
             first_run_complete: false,
+            session_start_pending: default_session_start_pending(),
             timer_start_timestamp: None,
             timer_paused_at: None,
             pause_reason: None,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { enable as enableAutostart } from "@tauri-apps/plugin-autostart";
 import {
   isPermissionGranted,
   requestPermission,
@@ -9,6 +10,7 @@ import {
 import {
   startTimer,
   clearTimer,
+  clearTimerForNextLogin,
   pauseTimer,
   resumeTimer,
   quitApp,
@@ -17,6 +19,7 @@ import {
   getConfig,
   markWarningNotificationSent,
 } from "./lib/invoke";
+import { getWarningNotificationBody } from "./lib/warningNotification";
 import { LockScreen } from "./components/LockScreen";
 import { SetupWizard } from "./components/SetupWizard";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -26,15 +29,6 @@ import { PausedPanel } from "./components/PausedPanel";
 
 type View = "loading" | "setup" | "lock" | "paused" | "unlocked";
 type PasswordPromptMode = "settings" | "quit" | "relock" | "pause" | null;
-
-function getWarningBody(remainingSeconds: number): string {
-  if (remainingSeconds <= 60) {
-    return "Less than a minute remaining";
-  }
-
-  const remainingMinutes = Math.ceil(remainingSeconds / 60);
-  return `${remainingMinutes} minute${remainingMinutes === 1 ? "" : "s"} remaining`;
-}
 
 function App() {
   const [view, setView] = useState<View>("loading");
@@ -64,6 +58,12 @@ function App() {
     try {
       const config = await syncConfig();
       const win = getCurrentWindow();
+
+      if (config.first_run_complete && config.autostart_enabled) {
+        void enableAutostart().catch((error) => {
+          console.error("Failed to refresh autostart entry:", error);
+        });
+      }
 
       if (!config.first_run_complete) {
         hasExecutedRef.current = false;
@@ -114,10 +114,13 @@ function App() {
     void loadRuntimeState();
   }, [loadRuntimeState]);
 
-  const openPasswordPrompt = useCallback((mode: Exclude<PasswordPromptMode, null>) => {
-    setPasswordPromptMode(mode);
-    setShowPasswordPrompt(true);
-  }, []);
+  const openPasswordPrompt = useCallback(
+    (mode: Exclude<PasswordPromptMode, null>) => {
+      setPasswordPromptMode(mode);
+      setShowPasswordPrompt(true);
+    },
+    [],
+  );
 
   useEffect(() => {
     const unlistenFns: Array<() => void> = [];
@@ -127,7 +130,7 @@ function App() {
       unlistenFns.push(
         await listen("show-settings", () => {
           openPasswordPrompt("settings");
-        })
+        }),
       );
 
       unlistenFns.push(
@@ -141,7 +144,7 @@ function App() {
             const win = getCurrentWindow();
             await win.show();
           }
-        })
+        }),
       );
 
       unlistenFns.push(
@@ -166,19 +169,21 @@ function App() {
           } catch (e) {
             console.error("Failed to resume paused session:", e);
           }
-        })
+        }),
       );
 
       unlistenFns.push(
         await listen("show-about", () => {
-          alert("Sessionizer v1.0.0\nA parental screen-time session panel for Windows");
-        })
+          alert(
+            "Sessionizer v1.0.0\nA parental screen-time session panel for Windows",
+          );
+        }),
       );
 
       unlistenFns.push(
         await listen("quit-app", () => {
           openPasswordPrompt("quit");
-        })
+        }),
       );
 
       if (disposed) {
@@ -345,12 +350,15 @@ function App() {
             if (permissionGranted) {
               sendNotification({
                 title: "Session ending soon",
-                body: getWarningBody(remaining),
+                body: getWarningNotificationBody(remaining),
               });
               try {
                 await markWarningNotificationSent();
               } catch (e) {
-                console.error("Failed to mark warning notification as sent:", e);
+                console.error(
+                  "Failed to mark warning notification as sent:",
+                  e,
+                );
               }
             }
           } catch (e) {
@@ -366,7 +374,7 @@ function App() {
         }
 
         hasExecutedRef.current = true;
-        await clearTimer();
+        await clearTimerForNextLogin();
         setView("unlocked");
         await getCurrentWindow().hide();
         await executeShutdown(config.action);
@@ -388,18 +396,18 @@ function App() {
       ? "Confirm Re-lock"
       : passwordPromptMode === "pause"
         ? "Pause Session"
-      : passwordPromptMode === "quit"
-        ? "Confirm Quit"
-        : "Enter Password";
+        : passwordPromptMode === "quit"
+          ? "Confirm Quit"
+          : "Enter Password";
 
   const passwordPromptLabel =
     passwordPromptMode === "relock"
       ? "Re-lock Session"
       : passwordPromptMode === "pause"
         ? "Pause Session"
-      : passwordPromptMode === "quit"
-        ? "Quit App"
-        : "Open Settings";
+        : passwordPromptMode === "quit"
+          ? "Quit App"
+          : "Open Settings";
 
   const passwordPromptLoadingLabel =
     passwordPromptMode === "quit" ? "Quitting..." : "Checking...";

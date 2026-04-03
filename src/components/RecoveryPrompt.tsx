@@ -1,8 +1,5 @@
 import { useState } from "react";
-import {
-  verifyRecoveryKey,
-  resetPasswordWithRecovery,
-} from "../lib/invoke";
+import { verifyRecoveryKey, resetPasswordWithRecovery } from "../lib/invoke";
 
 interface RecoveryPromptProps {
   onRecovered: () => void;
@@ -36,7 +33,7 @@ export function RecoveryPrompt({ onRecovered, onCancel }: RecoveryPromptProps) {
         setError("Invalid recovery key");
         setKey("");
       }
-    } catch (e) {
+    } catch {
       setError("Failed to verify recovery key");
     } finally {
       setLoading(false);
@@ -69,7 +66,7 @@ export function RecoveryPrompt({ onRecovered, onCancel }: RecoveryPromptProps) {
         setNewPassword("");
         setConfirmPassword("");
       }
-    } catch (e) {
+    } catch {
       setError("Failed to reset password");
     } finally {
       setLoading(false);
@@ -95,9 +92,7 @@ export function RecoveryPrompt({ onRecovered, onCancel }: RecoveryPromptProps) {
                 className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white font-mono uppercase"
                 autoFocus
               />
-              {error && (
-                <p className="text-red-500 mt-2 text-sm">{error}</p>
-              )}
+              {error && <p className="text-red-500 mt-2 text-sm">{error}</p>}
               <div className="flex gap-4 mt-6">
                 <button
                   type="button"
@@ -118,7 +113,9 @@ export function RecoveryPrompt({ onRecovered, onCancel }: RecoveryPromptProps) {
           </>
         ) : (
           <>
-            <h2 className="text-2xl font-bold text-white mb-4">Reset Password</h2>
+            <h2 className="text-2xl font-bold text-white mb-4">
+              Reset Password
+            </h2>
             <p className="text-slate-400 mb-6">
               Set a new password for Sessionizer.
             </p>
@@ -138,9 +135,7 @@ export function RecoveryPrompt({ onRecovered, onCancel }: RecoveryPromptProps) {
                 placeholder="Confirm new password"
                 className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white"
               />
-              {error && (
-                <p className="text-red-500 text-sm">{error}</p>
-              )}
+              {error && <p className="text-red-500 text-sm">{error}</p>}
               <div className="flex gap-4 pt-2">
                 <button
                   type="button"

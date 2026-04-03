@@ -24,7 +24,7 @@ export function useCountdown(warningMinutes: number = 5): CountdownState {
           getConfig(),
         ]);
         setTotalSeconds(config.timeout_minutes * 60);
-        
+
         if (remaining !== null) {
           setRemainingSeconds(remaining);
           setIsWarning(remaining <= warningMinutes * 60 && remaining > 60);

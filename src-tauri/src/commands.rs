@@ -49,6 +49,7 @@ pub fn setup_password(password: String, timeout_minutes: u64) -> Result<String, 
         action: "shutdown".to_string(),
         autostart_enabled: true,
         first_run_complete: false,
+        session_start_pending: true,
         timer_start_timestamp: None,
         timer_paused_at: None,
         pause_reason: None,
@@ -119,6 +120,15 @@ pub fn start_timer() -> Result<(), String> {
 pub fn clear_timer() -> Result<(), String> {
     let mut config = load_config();
     session::clear_session(&mut config);
+    config.session_start_pending = false;
+    save_config(&config)
+}
+
+#[tauri::command]
+pub fn clear_timer_for_next_login() -> Result<(), String> {
+    let mut config = load_config();
+    session::clear_session(&mut config);
+    config.session_start_pending = true;
     save_config(&config)
 }
 

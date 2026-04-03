@@ -18,31 +18,30 @@ export function CountdownTimer({
   isUrgent,
 }: CountdownTimerProps) {
   if (remainingSeconds === null) {
-    return (
-      <div className="text-6xl font-bold text-slate-400">--:--</div>
-    );
+    return <div className="text-6xl font-bold text-slate-400">--:--</div>;
   }
 
-  const progress = totalSeconds > 0
-    ? Math.max(0, Math.min(100, (remainingSeconds / totalSeconds) * 100))
-    : 0;
+  const progress =
+    totalSeconds > 0
+      ? Math.max(0, Math.min(100, (remainingSeconds / totalSeconds) * 100))
+      : 0;
 
-  const themeColor = isUrgent 
-    ? "text-red-500" 
-    : isWarning 
-      ? "text-orange-500" 
+  const themeColor = isUrgent
+    ? "text-red-500"
+    : isWarning
+      ? "text-orange-500"
       : "text-blue-500";
 
-  const progressColor = isUrgent 
-    ? "bg-red-500" 
-    : isWarning 
-      ? "bg-orange-500" 
+  const progressColor = isUrgent
+    ? "bg-red-500"
+    : isWarning
+      ? "bg-orange-500"
       : "bg-blue-500";
 
-  const animationClass = isUrgent 
-    ? "animate-pulse-urgent" 
-    : isWarning 
-      ? "animate-pulse-warning" 
+  const animationClass = isUrgent
+    ? "animate-pulse-urgent"
+    : isWarning
+      ? "animate-pulse-warning"
       : "";
 
   return (

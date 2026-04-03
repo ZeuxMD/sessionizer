@@ -49,12 +49,14 @@ export function PausedPanel({
 
         <div className="grid gap-3 mt-8">
           <button
+            type="button"
             onClick={onOpenSettings}
             className="w-full bg-blue-600 hover:bg-blue-700 rounded-lg px-6 py-3 font-semibold transition-colors"
           >
             Open Settings
           </button>
           <button
+            type="button"
             onClick={onHide}
             className="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg px-6 py-3 font-semibold transition-colors text-white"
           >

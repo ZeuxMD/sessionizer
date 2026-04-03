@@ -1,0 +1,40 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.10/schema.json",
+  "vcs": {
+    "enabled": false
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "package.json",
+      "biome.json",
+      "tsconfig.json",
+      "tsconfig.node.json",
+      "vite.config.ts",
+      "scripts/**/*.mjs",
+      "src/**/*.ts",
+      "src/**/*.tsx",
+      "src/**/*.css"
+    ]
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space"
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "a11y": {
+        "noAutofocus": "off",
+        "noLabelWithoutControl": "off",
+        "noSvgWithoutTitle": "off"
+      }
+    }
+  }
+}

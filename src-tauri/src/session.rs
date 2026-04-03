@@ -22,9 +22,10 @@ pub enum StartupAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionSignal {
     None,
-    PauseSystem,
+    Suspend,
     ResumeSystem,
-    Clear,
+    Logout,
+    Shutdown,
 }
 
 pub fn current_timestamp() -> u64 {
@@ -32,6 +33,7 @@ pub fn current_timestamp() -> u64 {
 }
 
 pub fn start_session(config: &mut AppConfig, now: u64) {
+    config.session_start_pending = false;
     config.timer_start_timestamp = Some(now);
     config.timer_paused_at = None;
     config.pause_reason = None;
@@ -60,6 +62,7 @@ pub fn resume_session(config: &mut AppConfig, now: u64) -> bool {
         (config.timer_start_timestamp, config.timer_paused_at)
     {
         let pause_duration = now.saturating_sub(paused_at);
+        config.session_start_pending = false;
         config.timer_start_timestamp = Some(start_timestamp.saturating_add(pause_duration));
         config.timer_paused_at = None;
         config.pause_reason = None;
@@ -81,14 +84,14 @@ pub fn mark_warning_notification_sent(config: &mut AppConfig) -> bool {
 pub fn get_remaining_seconds_at(config: &AppConfig, now: u64) -> Option<u64> {
     config.timer_start_timestamp.map(|start_timestamp| {
         let total_seconds = config.timeout_minutes * 60;
-        let effective_now = config.timer_paused_at.unwrap_or(now);
+        let effective_now = if config.pause_reason.is_some() {
+            config.timer_paused_at.unwrap_or(now)
+        } else {
+            now
+        };
         let elapsed = effective_now.saturating_sub(start_timestamp);
 
-        if elapsed >= total_seconds {
-            0
-        } else {
-            total_seconds - elapsed
-        }
+        total_seconds.saturating_sub(elapsed)
     })
 }
 
@@ -108,7 +111,10 @@ pub fn decide_startup_action(config: &AppConfig, is_autostart_launch: bool) -> S
         return StartupAction::Resume;
     }
 
-    if config.timer_start_timestamp.is_none() && is_autostart_launch {
+    if config.timer_start_timestamp.is_none()
+        && config.autostart_enabled
+        && (is_autostart_launch || config.session_start_pending)
+    {
         return StartupAction::Start;
     }
 
@@ -120,18 +126,27 @@ pub fn classify_end_session(is_ending: bool, lparam_flags: usize) -> SessionSign
     if !is_ending {
         SessionSignal::None
     } else if lparam_flags & ENDSESSION_LOGOFF_FLAG != 0 {
-        SessionSignal::PauseSystem
+        SessionSignal::Logout
     } else {
-        SessionSignal::Clear
+        SessionSignal::Shutdown
     }
 }
 
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub fn classify_power_broadcast(event: usize) -> SessionSignal {
     match event as u32 {
-        PBT_APMSUSPEND_EVENT => SessionSignal::PauseSystem,
+        PBT_APMSUSPEND_EVENT => SessionSignal::Suspend,
         PBT_APMRESUMEAUTOMATIC_EVENT | PBT_APMRESUMESUSPEND_EVENT => SessionSignal::ResumeSystem,
         _ => SessionSignal::None,
+    }
+}
+
+fn mark_session_start_pending(config: &mut AppConfig) -> bool {
+    if config.session_start_pending {
+        false
+    } else {
+        config.session_start_pending = true;
+        true
     }
 }
 
@@ -139,7 +154,16 @@ pub fn classify_power_broadcast(event: usize) -> SessionSignal {
 pub fn apply_signal(config: &mut AppConfig, signal: SessionSignal, now: u64) -> bool {
     match signal {
         SessionSignal::None => false,
-        SessionSignal::PauseSystem => pause_session(config, PauseReason::System, now),
+        SessionSignal::Suspend => pause_session(config, PauseReason::System, now),
+        SessionSignal::Logout => {
+            if pause_session(config, PauseReason::System, now) {
+                true
+            } else if config.timer_start_timestamp.is_none() {
+                mark_session_start_pending(config)
+            } else {
+                false
+            }
+        }
         SessionSignal::ResumeSystem => {
             if config.pause_reason == Some(PauseReason::System) {
                 resume_session(config, now)
@@ -147,17 +171,23 @@ pub fn apply_signal(config: &mut AppConfig, signal: SessionSignal, now: u64) -> 
                 false
             }
         }
-        SessionSignal::Clear => {
-            if config.timer_start_timestamp.is_none()
-                && config.timer_paused_at.is_none()
-                && config.pause_reason.is_none()
-                && !config.warning_notification_sent
+        SessionSignal::Shutdown => {
+            let mut changed = false;
+
+            if config.timer_start_timestamp.is_some()
+                || config.timer_paused_at.is_some()
+                || config.pause_reason.is_some()
+                || config.warning_notification_sent
             {
-                false
-            } else {
                 clear_session(config);
-                true
+                changed = true;
             }
+
+            if mark_session_start_pending(config) {
+                changed = true;
+            }
+
+            changed
         }
     }
 }
@@ -212,8 +242,24 @@ mod tests {
     }
 
     #[test]
-    fn startup_stays_idle_on_manual_launch_without_timer() {
+    fn startup_starts_when_next_login_is_pending() {
         let config = configured_app();
+        assert_eq!(decide_startup_action(&config, false), StartupAction::Start);
+    }
+
+    #[test]
+    fn startup_stays_idle_on_manual_launch_without_timer() {
+        let mut config = configured_app();
+        config.session_start_pending = false;
+        assert_eq!(decide_startup_action(&config, false), StartupAction::None);
+    }
+
+    #[test]
+    fn startup_respects_disabled_autostart_even_if_pending() {
+        let mut config = configured_app();
+        config.autostart_enabled = false;
+
+        assert_eq!(decide_startup_action(&config, true), StartupAction::None);
         assert_eq!(decide_startup_action(&config, false), StartupAction::None);
     }
 
@@ -240,6 +286,7 @@ mod tests {
     fn start_session_resets_warning_and_pause_metadata() {
         let mut config = configured_app();
         config.warning_notification_sent = true;
+        config.session_start_pending = true;
         config.pause_reason = Some(PauseReason::Manual);
         config.timer_paused_at = Some(100);
 
@@ -248,6 +295,7 @@ mod tests {
         assert_eq!(config.timer_start_timestamp, Some(42));
         assert_eq!(config.timer_paused_at, None);
         assert_eq!(config.pause_reason, None);
+        assert!(!config.session_start_pending);
         assert!(!config.warning_notification_sent);
     }
 
@@ -283,6 +331,7 @@ mod tests {
         assert_eq!(config.timer_start_timestamp, Some(160));
         assert_eq!(config.timer_paused_at, None);
         assert_eq!(config.pause_reason, None);
+        assert!(!config.session_start_pending);
         assert!(config.warning_notification_sent);
         assert_eq!(get_remaining_seconds_at(&config, 220), Some(3540));
     }
@@ -306,20 +355,20 @@ mod tests {
     fn classify_logout_end_session_as_pause() {
         assert_eq!(
             classify_end_session(true, ENDSESSION_LOGOFF_FLAG),
-            SessionSignal::PauseSystem
+            SessionSignal::Logout
         );
     }
 
     #[test]
     fn classify_shutdown_end_session_as_clear() {
-        assert_eq!(classify_end_session(true, 0), SessionSignal::Clear);
+        assert_eq!(classify_end_session(true, 0), SessionSignal::Shutdown);
     }
 
     #[test]
     fn classify_suspend_event_as_pause() {
         assert_eq!(
             classify_power_broadcast(PBT_APMSUSPEND_EVENT as usize),
-            SessionSignal::PauseSystem
+            SessionSignal::Suspend
         );
     }
 
@@ -332,5 +381,48 @@ mod tests {
         assert!(!apply_signal(&mut config, SessionSignal::ResumeSystem, 220));
         assert_eq!(config.timer_paused_at, Some(160));
         assert_eq!(config.pause_reason, Some(PauseReason::Manual));
+    }
+
+    #[test]
+    fn logout_without_active_session_marks_next_login_pending() {
+        let mut config = configured_app();
+        config.session_start_pending = false;
+
+        assert!(apply_signal(&mut config, SessionSignal::Logout, 220));
+        assert!(config.session_start_pending);
+    }
+
+    #[test]
+    fn suspend_without_active_session_leaves_pending_state_unchanged() {
+        let mut config = configured_app();
+        config.session_start_pending = false;
+
+        assert!(!apply_signal(&mut config, SessionSignal::Suspend, 220));
+        assert!(!config.session_start_pending);
+    }
+
+    #[test]
+    fn shutdown_clears_session_and_marks_next_login_pending() {
+        let mut config = configured_app();
+        config.session_start_pending = false;
+        start_session(&mut config, 100);
+        config.warning_notification_sent = true;
+
+        assert!(apply_signal(&mut config, SessionSignal::Shutdown, 220));
+        assert_eq!(config.timer_start_timestamp, None);
+        assert_eq!(config.timer_paused_at, None);
+        assert_eq!(config.pause_reason, None);
+        assert!(!config.warning_notification_sent);
+        assert!(config.session_start_pending);
+    }
+
+    #[test]
+    fn legacy_paused_sessions_keep_counting_down() {
+        let mut config = configured_app();
+        config.timer_start_timestamp = Some(100);
+        config.timer_paused_at = Some(130);
+        config.pause_reason = None;
+
+        assert_eq!(get_remaining_seconds_at(&config, 200), Some(3500));
     }
 }
