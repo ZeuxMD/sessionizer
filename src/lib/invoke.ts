@@ -3,8 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 export type PauseReason = "manual" | "system";
 
 export interface AppConfig {
-  password_hash: string;
-  recovery_key_hash: string;
   timeout_minutes: number;
   warning_minutes: number;
   action: string;
@@ -21,8 +19,8 @@ export async function getConfig(): Promise<AppConfig> {
   return invoke<AppConfig>("get_config");
 }
 
-export async function saveConfig(config: AppConfig): Promise<void> {
-  return invoke("save_config_cmd", { config });
+export async function finishSetup(): Promise<void> {
+  return invoke("finish_setup");
 }
 
 export async function updateSettings(
@@ -32,10 +30,10 @@ export async function updateSettings(
   autostartEnabled: boolean,
 ): Promise<void> {
   return invoke("update_settings", {
-    timeout_minutes: timeoutMinutes,
-    warning_minutes: warningMinutes,
+    timeoutMinutes,
+    warningMinutes,
     action,
-    autostart_enabled: autostartEnabled,
+    autostartEnabled,
   });
 }
 
@@ -45,11 +43,11 @@ export async function isFirstRun(): Promise<boolean> {
 
 export async function setupPassword(
   password: string,
-  timeout_minutes: number,
+  timeoutMinutes: number,
 ): Promise<string> {
   return invoke<string>("setup_password", {
     password,
-    timeout_minutes,
+    timeoutMinutes,
   });
 }
 
@@ -63,21 +61,21 @@ export async function verifyRecoveryKey(key: string): Promise<boolean> {
 
 export async function resetPasswordWithRecovery(
   key: string,
-  new_password: string,
+  newPassword: string,
 ): Promise<boolean> {
   return invoke<boolean>("reset_password_with_recovery", {
     key,
-    new_password,
+    newPassword,
   });
 }
 
 export async function changePassword(
   current: string,
-  new_password: string,
+  newPassword: string,
 ): Promise<boolean> {
   return invoke<boolean>("change_password", {
     current,
-    new_password,
+    newPassword,
   });
 }
 

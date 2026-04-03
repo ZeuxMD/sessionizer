@@ -3,14 +3,48 @@ use crate::password::{generate_recovery_key, hash_password, verify_password as v
 use crate::session;
 use crate::shutdown::execute_action;
 use tauri::AppHandle;
+use serde::Serialize;
 
-#[tauri::command]
-pub fn get_config() -> Result<AppConfig, String> {
-    Ok(load_config())
+#[derive(Serialize)]
+pub struct FrontendConfig {
+    pub timeout_minutes: u64,
+    pub warning_minutes: u64,
+    pub action: String,
+    pub autostart_enabled: bool,
+    pub first_run_complete: bool,
+    pub session_start_pending: bool,
+    pub timer_start_timestamp: Option<u64>,
+    pub timer_paused_at: Option<u64>,
+    pub pause_reason: Option<PauseReason>,
+    pub warning_notification_sent: bool,
+}
+
+impl From<AppConfig> for FrontendConfig {
+    fn from(config: AppConfig) -> Self {
+        Self {
+            timeout_minutes: config.timeout_minutes,
+            warning_minutes: config.warning_minutes,
+            action: config.action,
+            autostart_enabled: config.autostart_enabled,
+            first_run_complete: config.first_run_complete,
+            session_start_pending: config.session_start_pending,
+            timer_start_timestamp: config.timer_start_timestamp,
+            timer_paused_at: config.timer_paused_at,
+            pause_reason: config.pause_reason,
+            warning_notification_sent: config.warning_notification_sent,
+        }
+    }
 }
 
 #[tauri::command]
-pub fn save_config_cmd(config: AppConfig) -> Result<(), String> {
+pub fn get_config() -> Result<FrontendConfig, String> {
+    Ok(load_config().into())
+}
+
+#[tauri::command]
+pub fn finish_setup() -> Result<(), String> {
+    let mut config = load_config();
+    config.first_run_complete = true;
     save_config(&config)
 }
 
