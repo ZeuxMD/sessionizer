@@ -56,6 +56,11 @@ toolchain:
       version: "2.10.1"
       source: https://www.npmjs.com/package/@tauri-apps/cli
       rationale: Canonical Tauri developer workflow for local desktop runs and packaging.
+    - name: tauri-specta
+      purpose: ipc-type-generation
+      version: "^2.0.0"
+      source: https://crates.io/crates/tauri-specta
+      rationale: Automates TypeScript definition generation directly from Rust #[tauri::command] signatures to eliminate snake_case vs camelCase serialization bugs and implicitly enforce strict IPC boundaries.
   policy:
     runtime:
       max_bump: minor
@@ -122,6 +127,8 @@ phases:
     status: planned
     summary: Expand timer and settings regression coverage once the first bug-fix batch exposes repeatable failure patterns.
 deferred_rules:
+  - id: tauri-specta-strict-ipc
+    reason: The application currently models IPC manually in invoke.ts. Specta needs to be integrated into the tauri builder in lib.rs to auto-generate those typings at compile time going forward.
   - id: session-flow-regression-suite
     reason: The current app needs a few more extracted seams before end-to-end timer and settings cases can be tested with low noise.
 promotion_policy:
