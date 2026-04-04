@@ -1,0 +1,27 @@
+--- src-tauri/src/lib.rs
++++ src-tauri/src/lib.rs
+@@ -190,4 +190,30 @@
+     match result {
+         Ok(_) => log_error("App exited normally"),
+         Err(e) => log_error(&format!("App error: {}", e)),
+     }
+ }
++
++#[cfg(test)]
++mod bindings {
++    use super::*;
++    
++    #[test]
++    fn export_bindings() {
++        let specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
++            .commands(tauri_specta::collect_commands![
++                commands::get_config,
++                commands::finish_setup,
++                commands::update_settings,
++            ]);
++            
++        specta_builder
++            .export(tauri_specta::ts::ExportConfiguration::new().bigint(tauri_specta::ts::BigIntExportBehavior::Number), "../src/lib/bindings.ts")
++            .expect("Failed to export typescript bindings");
++    }
++}

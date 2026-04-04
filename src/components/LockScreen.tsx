@@ -8,17 +8,25 @@ import { useCountdown } from "../hooks/useCountdown";
 interface LockScreenProps {
   onUnlock: () => void;
   onPause: () => void;
+  timeoutMinutes: number;
   warningMinutes: number;
+  isSessionExpired: boolean;
+  statusMessage?: string | null;
 }
 
 export function LockScreen({
   onUnlock,
   onPause,
+  timeoutMinutes,
   warningMinutes,
+  isSessionExpired,
+  statusMessage,
 }: LockScreenProps) {
   const [showRecovery, setShowRecovery] = useState(false);
-  const { remainingSeconds, totalSeconds, isWarning, isUrgent } =
-    useCountdown(warningMinutes);
+  const { remainingSeconds, totalSeconds, isWarning, isUrgent } = useCountdown(
+    timeoutMinutes,
+    warningMinutes,
+  );
 
   const handleRecoverySuccess = () => {
     setShowRecovery(false);
@@ -50,6 +58,14 @@ export function LockScreen({
 
         <WarningBanner isWarning={isWarning} isUrgent={isUrgent} />
 
+        {statusMessage && (
+          <div className="w-full max-w-md mx-auto mb-6 bg-red-600/15 border border-red-500 rounded-lg p-4">
+            <p className="text-red-300 text-sm leading-relaxed">
+              {statusMessage}
+            </p>
+          </div>
+        )}
+
         <CountdownTimer
           remainingSeconds={remainingSeconds}
           totalSeconds={totalSeconds}
@@ -61,13 +77,15 @@ export function LockScreen({
           <PasswordInput onSuccess={onUnlock} />
         </div>
 
-        <button
-          type="button"
-          onClick={onPause}
-          className="w-full mt-4 bg-slate-700 hover:bg-slate-600 rounded-lg px-6 py-3 font-semibold transition-colors text-white"
-        >
-          Pause Session
-        </button>
+        {!isSessionExpired && (
+          <button
+            type="button"
+            onClick={onPause}
+            className="w-full mt-4 bg-slate-700 hover:bg-slate-600 rounded-lg px-6 py-3 font-semibold transition-colors text-white"
+          >
+            Pause Session
+          </button>
+        )}
 
         <button
           type="button"

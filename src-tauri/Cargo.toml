@@ -17,7 +17,6 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
-tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 argon2 = "0.5"
@@ -29,6 +28,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 specta = "=2.0.0-rc.20"
+specta-typescript = "=0.0.7"
 tauri-specta = { version = "=2.0.0-rc.20", features = ["javascript", "typescript"] }
 
 [profile.dev]
