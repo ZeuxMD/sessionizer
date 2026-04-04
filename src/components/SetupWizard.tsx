@@ -3,7 +3,7 @@ import { setupPassword, finishSetup } from "../lib/invoke";
 import { enable } from "@tauri-apps/plugin-autostart";
 
 interface SetupWizardProps {
-  onComplete: () => void;
+  onComplete: () => void | Promise<void>;
 }
 
 export function SetupWizard({ onComplete }: SetupWizardProps) {
@@ -62,11 +62,16 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
       return;
     }
 
+    setLoading(true);
+    setError(null);
+
     try {
       await finishSetup();
-      onComplete();
+      await onComplete();
     } catch {
       setError("Failed to complete setup");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -234,9 +239,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             <button
               type="button"
               onClick={handleStep3}
+              disabled={loading}
               className="w-full bg-blue-600 hover:bg-blue-700 rounded-lg px-6 py-3 font-semibold transition-colors"
             >
-              Finish Setup
+              {loading ? "Finishing..." : "Finish Setup"}
             </button>
           </>
         )}

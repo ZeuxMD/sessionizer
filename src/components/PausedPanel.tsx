@@ -4,16 +4,20 @@ import { useCountdown } from "../hooks/useCountdown";
 interface PausedPanelProps {
   onHide: () => void;
   onOpenSettings: () => void;
+  timeoutMinutes: number;
   warningMinutes: number;
 }
 
 export function PausedPanel({
   onHide,
   onOpenSettings,
+  timeoutMinutes,
   warningMinutes,
 }: PausedPanelProps) {
-  const { remainingSeconds, totalSeconds, isWarning, isUrgent } =
-    useCountdown(warningMinutes);
+  const { remainingSeconds, totalSeconds, isWarning, isUrgent } = useCountdown(
+    timeoutMinutes,
+    warningMinutes,
+  );
 
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">

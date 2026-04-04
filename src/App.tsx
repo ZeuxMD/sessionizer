@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { enable as enableAutostart } from "@tauri-apps/plugin-autostart";
@@ -8,27 +8,35 @@ import {
   sendNotification,
 } from "@tauri-apps/plugin-notification";
 import {
-  startTimer,
   clearTimer,
-  clearTimerForNextLogin,
-  pauseTimer,
-  resumeTimer,
-  quitApp,
-  getRemainingSeconds,
-  executeShutdown,
+  executeExpiredAction,
   getConfig,
+  getRemainingSeconds,
   markWarningNotificationSent,
+  pauseTimer,
+  quitApp,
+  resumeTimer,
+  startTimer,
+  type ExpiredActionStatus,
 } from "./lib/invoke";
-import { getWarningNotificationBody } from "./lib/warningNotification";
+import { FatalErrorScreen } from "./components/FatalErrorScreen";
 import { LockScreen } from "./components/LockScreen";
-import { SetupWizard } from "./components/SetupWizard";
-import { SettingsPanel } from "./components/SettingsPanel";
 import { PasswordInput } from "./components/PasswordInput";
-import { UnlockedPanel } from "./components/UnlockedPanel";
 import { PausedPanel } from "./components/PausedPanel";
+import { SettingsPanel } from "./components/SettingsPanel";
+import { SetupWizard } from "./components/SetupWizard";
+import { UnlockedPanel } from "./components/UnlockedPanel";
+import { getWarningNotificationBody } from "./lib/warningNotification";
 
-type View = "loading" | "setup" | "lock" | "paused" | "unlocked";
+type View = "loading" | "setup" | "lock" | "paused" | "unlocked" | "fatal";
 type PasswordPromptMode = "settings" | "quit" | "relock" | "pause" | null;
+
+const STARTUP_ERROR_MESSAGE =
+  "Sessionizer could not load its configuration. The session remains locked until an adult repairs the configuration file.";
+const RUNTIME_ERROR_MESSAGE =
+  "Sessionizer lost access to its configuration while running. The session remains locked until an adult repairs the configuration file.";
+const ACTION_FAILURE_MESSAGE =
+  "Time is up. Sessionizer could not complete the configured system action, so the session remains locked.";
 
 function App() {
   const [view, setView] = useState<View>("loading");
@@ -36,7 +44,11 @@ function App() {
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [passwordPromptMode, setPasswordPromptMode] =
     useState<PasswordPromptMode>(null);
+  const [timeoutMinutes, setTimeoutMinutes] = useState(60);
   const [warningMinutes, setWarningMinutes] = useState(5);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [lockMessage, setLockMessage] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const viewRef = useRef(view);
   const hasExecutedRef = useRef(false);
@@ -48,9 +60,43 @@ function App() {
     viewRef.current = view;
   }, [view]);
 
+  const resetTimerState = useCallback(
+    (timerStartTimestamp: number | null, expired: boolean = false) => {
+      hasExecutedRef.current = expired;
+      lastTimerStartRef.current = timerStartTimestamp;
+      warningNotificationPendingRef.current = false;
+      warningNotificationHandledRef.current = false;
+      setSessionExpired(expired);
+      setLockMessage(null);
+    },
+    [],
+  );
+
+  const showFatalError = useCallback(
+    async (message: string, error: unknown) => {
+      console.error(message, error);
+      resetTimerState(null, true);
+      setRuntimeError(message);
+      setShowSettings(false);
+      setShowPasswordPrompt(false);
+      setPasswordPromptMode(null);
+      setView("fatal");
+
+      try {
+        await getCurrentWindow().show();
+      } catch (showError) {
+        console.error("Failed to show fatal error screen:", showError);
+      }
+    },
+    [resetTimerState],
+  );
+
   const syncConfig = useCallback(async () => {
     const config = await getConfig();
+    setRuntimeError(null);
+    setTimeoutMinutes(config.timeout_minutes);
     setWarningMinutes(config.warning_minutes);
+    setSessionExpired(config.session_expired);
     return config;
   }, []);
 
@@ -66,10 +112,7 @@ function App() {
       }
 
       if (!config.first_run_complete) {
-        hasExecutedRef.current = false;
-        lastTimerStartRef.current = null;
-        warningNotificationPendingRef.current = false;
-        warningNotificationHandledRef.current = false;
+        resetTimerState(null);
         setView("setup");
         await win.show();
         return;
@@ -82,33 +125,29 @@ function App() {
         config.timer_paused_at !== null &&
         config.pause_reason === "manual"
       ) {
-        hasExecutedRef.current = false;
-        lastTimerStartRef.current = config.timer_start_timestamp;
-        warningNotificationPendingRef.current = false;
-        warningNotificationHandledRef.current = false;
+        resetTimerState(config.timer_start_timestamp);
         setView("paused");
         await win.hide();
         return;
       }
 
       if (remaining === null) {
-        hasExecutedRef.current = false;
-        lastTimerStartRef.current = null;
-        warningNotificationPendingRef.current = false;
-        warningNotificationHandledRef.current = false;
+        resetTimerState(null);
         setView("unlocked");
         await win.hide();
-      } else {
-        lastTimerStartRef.current = config.timer_start_timestamp;
-        warningNotificationPendingRef.current = false;
-        warningNotificationHandledRef.current = false;
-        setView("lock");
-        await win.show();
+        return;
       }
-    } catch (e) {
-      console.error("Failed to initialize:", e);
+
+      resetTimerState(
+        config.timer_start_timestamp,
+        Boolean(config.session_expired),
+      );
+      setView("lock");
+      await win.show();
+    } catch (error) {
+      await showFatalError(STARTUP_ERROR_MESSAGE, error);
     }
-  }, [syncConfig]);
+  }, [resetTimerState, showFatalError, syncConfig]);
 
   useEffect(() => {
     void loadRuntimeState();
@@ -159,15 +198,13 @@ function App() {
             }
 
             await resumeTimer();
-            hasExecutedRef.current = false;
-            warningNotificationPendingRef.current = false;
-            warningNotificationHandledRef.current = false;
+            resetTimerState(null);
             setView("lock");
             const win = getCurrentWindow();
             await win.show();
             await win.setFocus();
-          } catch (e) {
-            console.error("Failed to resume paused session:", e);
+          } catch (error) {
+            await showFatalError(RUNTIME_ERROR_MESSAGE, error);
           }
         }),
       );
@@ -201,29 +238,24 @@ function App() {
         unlisten();
       }
     };
-  }, [openPasswordPrompt]);
+  }, [openPasswordPrompt, resetTimerState, showFatalError]);
 
   const handleSetupComplete = useCallback(async () => {
     const config = await syncConfig();
-    hasExecutedRef.current = false;
-    lastTimerStartRef.current = null;
-    warningNotificationPendingRef.current = false;
-    warningNotificationHandledRef.current = false;
+    await startTimer();
+    const updatedConfig = await getConfig();
+    resetTimerState(updatedConfig.timer_start_timestamp);
     setView("lock");
     setWarningMinutes(config.warning_minutes);
-    await startTimer();
     await getCurrentWindow().show();
-  }, [syncConfig]);
+  }, [resetTimerState, syncConfig]);
 
   const handleUnlock = useCallback(async () => {
     await clearTimer();
-    hasExecutedRef.current = false;
-    lastTimerStartRef.current = null;
-    warningNotificationPendingRef.current = false;
-    warningNotificationHandledRef.current = false;
+    resetTimerState(null);
     setView("unlocked");
     await getCurrentWindow().hide();
-  }, []);
+  }, [resetTimerState]);
 
   const handlePasswordPromptClose = useCallback(() => {
     setShowPasswordPrompt(false);
@@ -237,8 +269,8 @@ function App() {
       try {
         await clearTimer();
         await quitApp();
-      } catch (e) {
-        console.error("Failed to quit app:", e);
+      } catch (error) {
+        console.error("Failed to quit app:", error);
       } finally {
         setShowPasswordPrompt(false);
         setPasswordPromptMode(null);
@@ -250,16 +282,14 @@ function App() {
       try {
         await syncConfig();
         await startTimer();
-        hasExecutedRef.current = false;
-        lastTimerStartRef.current = null;
-        warningNotificationPendingRef.current = false;
-        warningNotificationHandledRef.current = false;
+        const updatedConfig = await getConfig();
+        resetTimerState(updatedConfig.timer_start_timestamp);
         setView("lock");
         setShowPasswordPrompt(false);
         setPasswordPromptMode(null);
         await win.show();
-      } catch (e) {
-        console.error("Failed to re-lock session:", e);
+      } catch (error) {
+        console.error("Failed to re-lock session:", error);
       }
       return;
     }
@@ -267,15 +297,13 @@ function App() {
     if (passwordPromptMode === "pause") {
       try {
         await pauseTimer();
-        hasExecutedRef.current = false;
-        warningNotificationPendingRef.current = false;
-        warningNotificationHandledRef.current = false;
+        resetTimerState(null);
         setView("paused");
         setShowPasswordPrompt(false);
         setPasswordPromptMode(null);
         await win.hide();
-      } catch (e) {
-        console.error("Failed to pause session:", e);
+      } catch (error) {
+        console.error("Failed to pause session:", error);
       }
       return;
     }
@@ -284,7 +312,7 @@ function App() {
     setPasswordPromptMode(null);
     setShowSettings(true);
     await win.show();
-  }, [passwordPromptMode, syncConfig]);
+  }, [passwordPromptMode, resetTimerState, syncConfig]);
 
   const handleSettingsClose = useCallback(async () => {
     setShowSettings(false);
@@ -294,10 +322,10 @@ function App() {
       if (viewRef.current === "unlocked" || viewRef.current === "paused") {
         await getCurrentWindow().hide();
       }
-    } catch (e) {
-      console.error("Failed to refresh settings:", e);
+    } catch (error) {
+      await showFatalError(RUNTIME_ERROR_MESSAGE, error);
     }
-  }, [syncConfig]);
+  }, [showFatalError, syncConfig]);
 
   const handleHideUnlocked = useCallback(async () => {
     await getCurrentWindow().hide();
@@ -316,23 +344,30 @@ function App() {
           getRemainingSeconds(),
           getConfig(),
         ]);
-        
-        if (!isActive) return;
+
+        if (!isActive) {
+          return;
+        }
+
+        setSessionExpired(config.session_expired);
 
         if (config.timer_start_timestamp !== lastTimerStartRef.current) {
           lastTimerStartRef.current = config.timer_start_timestamp;
-          hasExecutedRef.current = false;
+          hasExecutedRef.current = config.session_expired;
           warningNotificationPendingRef.current = false;
           warningNotificationHandledRef.current = false;
+          setLockMessage(null);
         }
 
         if (remaining === null) {
-          lastTimerStartRef.current = null;
-          hasExecutedRef.current = false;
-          warningNotificationPendingRef.current = false;
-          warningNotificationHandledRef.current = false;
+          resetTimerState(null);
           setView("unlocked");
           await getCurrentWindow().hide();
+          return;
+        }
+
+        if (config.session_expired) {
+          hasExecutedRef.current = true;
           return;
         }
 
@@ -347,10 +382,15 @@ function App() {
 
           try {
             let permissionGranted = await isPermissionGranted();
-            if (!isActive) return;
+            if (!isActive) {
+              return;
+            }
+
             if (!permissionGranted) {
               permissionGranted = (await requestPermission()) === "granted";
-              if (!isActive) return;
+              if (!isActive) {
+                return;
+              }
             }
 
             if (permissionGranted) {
@@ -360,15 +400,15 @@ function App() {
               });
               try {
                 await markWarningNotificationSent();
-              } catch (e) {
+              } catch (error) {
                 console.error(
                   "Failed to mark warning notification as sent:",
-                  e,
+                  error,
                 );
               }
             }
-          } catch (e) {
-            console.error("Failed to send warning notification:", e);
+          } catch (error) {
+            console.error("Failed to send warning notification:", error);
           } finally {
             if (isActive) {
               warningNotificationHandledRef.current = true;
@@ -382,16 +422,28 @@ function App() {
         }
 
         hasExecutedRef.current = true;
-        await clearTimerForNextLogin();
-        
-        if (!isActive) return;
-        
-        setView("unlocked");
-        await getCurrentWindow().hide();
-        await executeShutdown(config.action);
-      } catch (e) {
+
+        const status: ExpiredActionStatus = await executeExpiredAction();
+        if (!isActive) {
+          return;
+        }
+
+        if (status === "action_started") {
+          setSessionExpired(true);
+          setLockMessage(null);
+          return;
+        }
+
+        if (status === "locked_on_failure") {
+          setSessionExpired(true);
+          setLockMessage(ACTION_FAILURE_MESSAGE);
+          return;
+        }
+
+        hasExecutedRef.current = false;
+      } catch (error) {
         if (isActive) {
-          console.error("Failed to check timer:", e);
+          await showFatalError(RUNTIME_ERROR_MESSAGE, error);
         }
       }
     };
@@ -405,7 +457,7 @@ function App() {
       isActive = false;
       window.clearInterval(interval);
     };
-  }, [view]);
+  }, [resetTimerState, showFatalError, view]);
 
   const passwordPromptTitle =
     passwordPromptMode === "relock"
@@ -427,6 +479,10 @@ function App() {
 
   const passwordPromptLoadingLabel =
     passwordPromptMode === "quit" ? "Quitting..." : "Checking...";
+
+  if (view === "fatal" && runtimeError) {
+    return <FatalErrorScreen message={runtimeError} />;
+  }
 
   if (showSettings) {
     return <SettingsPanel onClose={handleSettingsClose} />;
@@ -477,6 +533,7 @@ function App() {
       <PausedPanel
         onHide={handleHideUnlocked}
         onOpenSettings={() => openPasswordPrompt("settings")}
+        timeoutMinutes={timeoutMinutes}
         warningMinutes={warningMinutes}
       />
     );
@@ -486,7 +543,10 @@ function App() {
     <LockScreen
       onUnlock={handleUnlock}
       onPause={() => openPasswordPrompt("pause")}
+      timeoutMinutes={timeoutMinutes}
       warningMinutes={warningMinutes}
+      isSessionExpired={sessionExpired}
+      statusMessage={lockMessage}
     />
   );
 }
