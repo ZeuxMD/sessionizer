@@ -37,6 +37,7 @@ pub fn start_session(config: &mut AppConfig, now: u64) {
     config.timer_start_timestamp = Some(now);
     config.timer_paused_at = None;
     config.pause_reason = None;
+    config.session_expired = false;
     config.warning_notification_sent = false;
 }
 
@@ -44,11 +45,15 @@ pub fn clear_session(config: &mut AppConfig) {
     config.timer_start_timestamp = None;
     config.timer_paused_at = None;
     config.pause_reason = None;
+    config.session_expired = false;
     config.warning_notification_sent = false;
 }
 
 pub fn pause_session(config: &mut AppConfig, reason: PauseReason, now: u64) -> bool {
-    if config.timer_start_timestamp.is_some() && config.timer_paused_at.is_none() {
+    if config.timer_start_timestamp.is_some()
+        && config.timer_paused_at.is_none()
+        && !config.session_expired
+    {
         config.timer_paused_at = Some(now);
         config.pause_reason = Some(reason);
         true
@@ -61,6 +66,10 @@ pub fn resume_session(config: &mut AppConfig, now: u64) -> bool {
     if let (Some(start_timestamp), Some(paused_at)) =
         (config.timer_start_timestamp, config.timer_paused_at)
     {
+        if config.session_expired {
+            return false;
+        }
+
         let pause_duration = now.saturating_sub(paused_at);
         config.session_start_pending = false;
         config.timer_start_timestamp = Some(start_timestamp.saturating_add(pause_duration));
@@ -78,6 +87,15 @@ pub fn mark_warning_notification_sent(config: &mut AppConfig) -> bool {
     } else {
         config.warning_notification_sent = true;
         true
+    }
+}
+
+pub fn expire_session(config: &mut AppConfig) -> bool {
+    if config.timer_start_timestamp.is_some() && !config.session_expired {
+        config.session_expired = true;
+        true
+    } else {
+        false
     }
 }
 
@@ -101,6 +119,10 @@ pub fn get_remaining_seconds(config: &AppConfig) -> Option<u64> {
 
 pub fn decide_startup_action(config: &AppConfig, is_autostart_launch: bool) -> StartupAction {
     if !config.first_run_complete {
+        return StartupAction::None;
+    }
+
+    if config.session_expired {
         return StartupAction::None;
     }
 
@@ -154,8 +176,34 @@ fn mark_session_start_pending(config: &mut AppConfig) -> bool {
 pub fn apply_signal(config: &mut AppConfig, signal: SessionSignal, now: u64) -> bool {
     match signal {
         SessionSignal::None => false,
-        SessionSignal::Suspend => pause_session(config, PauseReason::System, now),
+        SessionSignal::Suspend => {
+            if config.session_expired {
+                false
+            } else {
+                pause_session(config, PauseReason::System, now)
+            }
+        }
         SessionSignal::Logout => {
+            if config.session_expired {
+                let mut changed = false;
+
+                if config.timer_start_timestamp.is_some()
+                    || config.timer_paused_at.is_some()
+                    || config.pause_reason.is_some()
+                    || config.session_expired
+                    || config.warning_notification_sent
+                {
+                    clear_session(config);
+                    changed = true;
+                }
+
+                if mark_session_start_pending(config) {
+                    changed = true;
+                }
+
+                return changed;
+            }
+
             if pause_session(config, PauseReason::System, now) {
                 true
             } else if config.timer_start_timestamp.is_none() {
@@ -165,7 +213,9 @@ pub fn apply_signal(config: &mut AppConfig, signal: SessionSignal, now: u64) -> 
             }
         }
         SessionSignal::ResumeSystem => {
-            if config.pause_reason == Some(PauseReason::System) {
+            if config.session_expired {
+                false
+            } else if config.pause_reason == Some(PauseReason::System) {
                 resume_session(config, now)
             } else {
                 false
@@ -177,6 +227,7 @@ pub fn apply_signal(config: &mut AppConfig, signal: SessionSignal, now: u64) -> 
             if config.timer_start_timestamp.is_some()
                 || config.timer_paused_at.is_some()
                 || config.pause_reason.is_some()
+                || config.session_expired
                 || config.warning_notification_sent
             {
                 clear_session(config);
@@ -198,7 +249,7 @@ pub fn persist_signal(signal: SessionSignal) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut config = load_config();
+    let mut config = load_config()?;
     if apply_signal(&mut config, signal, current_timestamp()) {
         save_config(&config)?;
     }
@@ -207,7 +258,7 @@ pub fn persist_signal(signal: SessionSignal) -> Result<(), String> {
 }
 
 pub fn apply_startup_policy(is_autostart_launch: bool) -> Result<(), String> {
-    let mut config = load_config();
+    let mut config = load_config()?;
 
     match decide_startup_action(&config, is_autostart_launch) {
         StartupAction::None => Ok(()),
@@ -283,11 +334,22 @@ mod tests {
     }
 
     #[test]
+    fn startup_keeps_expired_sessions_locked() {
+        let mut config = configured_app();
+        start_session(&mut config, 100);
+        expire_session(&mut config);
+
+        assert_eq!(decide_startup_action(&config, true), StartupAction::None);
+        assert_eq!(decide_startup_action(&config, false), StartupAction::None);
+    }
+
+    #[test]
     fn start_session_resets_warning_and_pause_metadata() {
         let mut config = configured_app();
         config.warning_notification_sent = true;
         config.session_start_pending = true;
         config.pause_reason = Some(PauseReason::Manual);
+        config.session_expired = true;
         config.timer_paused_at = Some(100);
 
         start_session(&mut config, 42);
@@ -296,6 +358,7 @@ mod tests {
         assert_eq!(config.timer_paused_at, None);
         assert_eq!(config.pause_reason, None);
         assert!(!config.session_start_pending);
+        assert!(!config.session_expired);
         assert!(!config.warning_notification_sent);
     }
 
@@ -341,6 +404,7 @@ mod tests {
         let mut config = configured_app();
         start_session(&mut config, 100);
         pause_session(&mut config, PauseReason::System, 160);
+        config.session_expired = true;
         config.warning_notification_sent = true;
 
         clear_session(&mut config);
@@ -348,7 +412,20 @@ mod tests {
         assert_eq!(config.timer_start_timestamp, None);
         assert_eq!(config.timer_paused_at, None);
         assert_eq!(config.pause_reason, None);
+        assert!(!config.session_expired);
         assert!(!config.warning_notification_sent);
+    }
+
+    #[test]
+    fn expire_session_locks_active_session_without_clearing_timer() {
+        let mut config = configured_app();
+        start_session(&mut config, 100);
+
+        assert!(expire_session(&mut config));
+        assert!(config.session_expired);
+        assert_eq!(get_remaining_seconds_at(&config, 4_000), Some(0));
+        assert!(!pause_session(&mut config, PauseReason::Manual, 160));
+        assert!(!resume_session(&mut config, 220));
     }
 
     #[test]
@@ -393,6 +470,19 @@ mod tests {
     }
 
     #[test]
+    fn logout_clears_expired_session_and_marks_next_login_pending() {
+        let mut config = configured_app();
+        config.session_start_pending = false;
+        start_session(&mut config, 100);
+        expire_session(&mut config);
+
+        assert!(apply_signal(&mut config, SessionSignal::Logout, 220));
+        assert_eq!(config.timer_start_timestamp, None);
+        assert!(config.session_start_pending);
+        assert!(!config.session_expired);
+    }
+
+    #[test]
     fn suspend_without_active_session_leaves_pending_state_unchanged() {
         let mut config = configured_app();
         config.session_start_pending = false;
@@ -406,12 +496,14 @@ mod tests {
         let mut config = configured_app();
         config.session_start_pending = false;
         start_session(&mut config, 100);
+        config.session_expired = true;
         config.warning_notification_sent = true;
 
         assert!(apply_signal(&mut config, SessionSignal::Shutdown, 220));
         assert_eq!(config.timer_start_timestamp, None);
         assert_eq!(config.timer_paused_at, None);
         assert_eq!(config.pause_reason, None);
+        assert!(!config.session_expired);
         assert!(!config.warning_notification_sent);
         assert!(config.session_start_pending);
     }
