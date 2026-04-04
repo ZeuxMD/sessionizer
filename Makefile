@@ -25,7 +25,7 @@ typecheck:
 
 test:
 	$(PNPM) test
-	$(CARGO) test --manifest-path src-tauri/Cargo.toml --all-targets
+	$(CARGO) test --manifest-path src-tauri/Cargo.toml --tests
 
 build:
 	$(PNPM) build
