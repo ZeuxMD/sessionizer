@@ -4,6 +4,34 @@ export type ExpiredActionStatus =
   | "no_action_needed"
   | "action_started"
   | "locked_on_failure";
+export type AdminPanelInfo = {
+  running: boolean;
+  listen_address: string;
+  port: number;
+  urls: string[];
+  error: string | null;
+};
+export type AdminSessionSnapshot = {
+  session_state: AdminSessionState;
+  remaining_seconds: number | null;
+  timeout_minutes: number;
+  warning_minutes: number;
+  action: string;
+  autostart_enabled: boolean;
+  first_run_complete: boolean;
+  session_start_pending: boolean;
+  timer_start_timestamp: number | null;
+  timer_paused_at: number | null;
+  pause_reason: PauseReason | null;
+  session_expired: boolean;
+  warning_notification_sent: boolean;
+};
+export type AdminSessionState =
+  | "setup"
+  | "unlocked"
+  | "locked"
+  | "paused"
+  | "expired";
 export type FrontendConfig = {
   timeout_minutes: number;
   warning_minutes: number;

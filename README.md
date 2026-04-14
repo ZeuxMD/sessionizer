@@ -11,6 +11,7 @@ A Windows desktop application for parental screen-time management. Sessionizer l
 - **Persistent Timer**: Timer survives app crashes, sleep, and hibernation via timestamp-based tracking
 - **Desktop Notifications**: Shows a one-time warning notification when time is almost up
 - **Protected Pause**: Adults can pause a child session after entering the password
+- **Remote Admin Panel**: Open a phone-friendly control panel over the local network using the same app password
 
 ## Tech Stack
 
@@ -64,10 +65,12 @@ The built executable will be at `src-tauri/target/release/sessionizer.exe`.
 - Resume a paused session from the tray with "Resume Session"
 - Sessionizer sends one desktop notification when the remaining time first reaches the warning window
 - Access system tray options: Settings, Re-lock, About, Quit
+- Open the remote admin panel from **Settings → Remote Admin** on your phone using the same password as the desktop app
 - Re-locking requires the password and starts a fresh child session
 - Logging out or putting the PC to sleep pauses the session and preserves the remaining time
 - Shutting down or restarting the PC resets the current child session instead of resuming it later
 - Session time, action when the time runs out (sleep, shutdown, restart) and resetting password can be configured via the settings panel accessed from the system tray
+- The remote admin panel can pause/resume the timer, add or subtract time, unlock/re-lock the session, and update the runtime settings over the LAN
 
 ### Timer States
 

@@ -12,6 +12,7 @@ on:
     paths:
       - "src-tauri/**"
       - "src/**"
+      - "admin.html"
       - "scripts/**"
       - ".agents/**"
       - "biome.json"

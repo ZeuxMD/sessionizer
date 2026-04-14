@@ -49,6 +49,11 @@ pub fn clear_session(config: &mut AppConfig) {
     config.warning_notification_sent = false;
 }
 
+pub fn restart_session(config: &mut AppConfig, now: u64) {
+    clear_session(config);
+    start_session(config, now);
+}
+
 pub fn pause_session(config: &mut AppConfig, reason: PauseReason, now: u64) -> bool {
     if config.timer_start_timestamp.is_some()
         && config.timer_paused_at.is_none()
@@ -115,6 +120,32 @@ pub fn get_remaining_seconds_at(config: &AppConfig, now: u64) -> Option<u64> {
 
 pub fn get_remaining_seconds(config: &AppConfig) -> Option<u64> {
     get_remaining_seconds_at(config, current_timestamp())
+}
+
+pub fn adjust_remaining_seconds(
+    config: &mut AppConfig,
+    delta_seconds: i64,
+    now: u64,
+) -> Option<u64> {
+    if config.timer_start_timestamp.is_none() || config.session_expired {
+        return None;
+    }
+
+    let start_timestamp = config.timer_start_timestamp?;
+    let adjusted = if delta_seconds >= 0 {
+        start_timestamp.saturating_add(delta_seconds as u64)
+    } else {
+        start_timestamp.saturating_sub(delta_seconds.unsigned_abs())
+    };
+
+    config.timer_start_timestamp = Some(adjusted);
+
+    let remaining = get_remaining_seconds_at(config, now);
+    if remaining.is_some_and(|seconds| seconds > config.warning_minutes * 60) {
+        config.warning_notification_sent = false;
+    }
+
+    remaining
 }
 
 pub fn decide_startup_action(config: &AppConfig, is_autostart_launch: bool) -> StartupAction {

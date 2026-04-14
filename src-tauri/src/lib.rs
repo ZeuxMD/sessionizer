@@ -15,7 +15,9 @@ use tauri::{
 
 mod commands;
 mod config;
+mod control;
 mod password;
+mod remote_admin;
 mod session;
 mod shutdown;
 mod windows_session;
@@ -31,7 +33,7 @@ const GENERATED_TYPES_START: &str = "/** user-defined types **/";
 #[cfg(debug_assertions)]
 const GENERATED_TYPES_END: &str = "/** tauri-specta globals **/";
 
-fn log_error(msg: &str) {
+pub(crate) fn log_error(msg: &str) {
     if let Ok(mut file) = OpenOptions::new()
         .create(true)
         .append(true)
@@ -60,6 +62,8 @@ fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         commands::get_remaining_seconds,
         commands::mark_warning_notification_sent,
         commands::execute_expired_action,
+        commands::get_admin_session_snapshot,
+        commands::get_admin_panel_info,
         commands::quit_app,
     ])
 }
@@ -153,6 +157,10 @@ pub fn run() {
         .invoke_handler(specta_builder.invoke_handler())
         .setup(move |app| {
             log_error("Running setup...");
+
+            let remote_admin_state = remote_admin::RemoteAdminState::default();
+            remote_admin::start_server(app.handle().clone(), remote_admin_state.clone());
+            app.manage(remote_admin_state);
 
             if let Err(error) = session::apply_startup_policy(is_autostart_launch) {
                 log_error(&format!("Failed to apply startup policy: {}", error));

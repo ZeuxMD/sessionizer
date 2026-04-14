@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  getAdminPanelInfo,
   getConfig,
   updateSettings,
   changePassword,
+  type AdminPanelInfo,
   type FrontendConfig,
 } from "../lib/invoke";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { listen } from "@tauri-apps/api/event";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -13,6 +16,9 @@ interface SettingsPanelProps {
 
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [config, setConfig] = useState<FrontendConfig | null>(null);
+  const [adminPanelInfo, setAdminPanelInfo] = useState<AdminPanelInfo | null>(
+    null,
+  );
   const [timeoutMinutes, setTimeoutMinutes] = useState(60);
   const [warningMinutes, setWarningMinutes] = useState(5);
   const [action, setAction] = useState("shutdown");
@@ -27,13 +33,17 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const closeTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const fetchConfig = async () => {
+    const fetchState = async () => {
       try {
-        const cfg = await getConfig();
+        const [cfg, adminInfo] = await Promise.all([
+          getConfig(),
+          getAdminPanelInfo(),
+        ]);
         const autostartState = await isEnabled().catch(
           () => cfg.autostart_enabled,
         );
         setConfig(cfg);
+        setAdminPanelInfo(adminInfo);
         setTimeoutMinutes(cfg.timeout_minutes);
         setWarningMinutes(cfg.warning_minutes);
         setAction(cfg.action);
@@ -42,9 +52,17 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         setError("Failed to load settings");
       }
     };
-    void fetchConfig();
+    void fetchState();
+
+    let unlisten: (() => void) | null = null;
+    void listen("runtime-state-changed", () => {
+      void fetchState();
+    }).then((dispose) => {
+      unlisten = dispose;
+    });
 
     return () => {
+      unlisten?.();
       if (closeTimeoutRef.current !== null) {
         window.clearTimeout(closeTimeoutRef.current);
       }
@@ -306,6 +324,43 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               />
               <span className="text-white">Start with Windows</span>
             </label>
+          </div>
+
+          <div className="border-t border-slate-700 pt-6">
+            <h3 className="text-lg font-semibold text-white mb-3">
+              Remote Admin
+            </h3>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Open the admin panel from your phone using the same Sessionizer
+              password. The server listens on the local network while the app is
+              running.
+            </p>
+            {adminPanelInfo?.error ? (
+              <p className="text-amber-300 text-sm mt-3 bg-amber-500/10 p-3 rounded-lg">
+                {adminPanelInfo.error}
+              </p>
+            ) : (
+              <div className="mt-4 space-y-2">
+                {adminPanelInfo?.urls.map((url) => (
+                  <div
+                    key={url}
+                    className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3"
+                  >
+                    <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">
+                      Admin URL
+                    </p>
+                    <p className="text-sm text-blue-300 break-all font-mono">
+                      {url}
+                    </p>
+                  </div>
+                ))}
+                {adminPanelInfo && adminPanelInfo.urls.length === 0 && (
+                  <p className="text-slate-500 text-sm">
+                    Waiting for the remote admin server to publish an address.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

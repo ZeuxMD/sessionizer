@@ -210,6 +210,16 @@ function App() {
       );
 
       unlistenFns.push(
+        await listen("runtime-state-changed", async () => {
+          try {
+            await loadRuntimeState();
+          } catch (error) {
+            await showFatalError(RUNTIME_ERROR_MESSAGE, error);
+          }
+        }),
+      );
+
+      unlistenFns.push(
         await listen("show-about", () => {
           alert(
             "Sessionizer v1.1.0\nA parental screen-time session panel for Windows",
@@ -238,7 +248,7 @@ function App() {
         unlisten();
       }
     };
-  }, [openPasswordPrompt, resetTimerState, showFatalError]);
+  }, [loadRuntimeState, openPasswordPrompt, resetTimerState, showFatalError]);
 
   const handleSetupComplete = useCallback(async () => {
     const config = await syncConfig();

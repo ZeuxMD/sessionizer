@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export type {
+  AdminPanelInfo,
+  AdminSessionSnapshot,
+  AdminSessionState,
   ExpiredActionStatus,
   FrontendConfig,
   PauseReason,
@@ -92,6 +95,12 @@ export function markWarningNotificationSent() {
 export function executeExpiredAction() {
   return invokeCommand<import("./bindings").ExpiredActionStatus>(
     "execute_expired_action",
+  );
+}
+
+export function getAdminPanelInfo() {
+  return invokeCommand<import("./bindings").AdminPanelInfo>(
+    "get_admin_panel_info",
   );
 }
 
