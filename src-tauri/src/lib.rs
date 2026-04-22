@@ -16,10 +16,14 @@ use tauri::{
 mod commands;
 mod config;
 mod control;
+pub mod device_controller;
+pub mod ipc;
 mod password;
 mod remote_admin;
+pub mod service_main;
 mod session;
 mod shutdown;
+pub mod state_store;
 mod windows_session;
 
 #[cfg(debug_assertions)]
@@ -158,11 +162,33 @@ pub fn run() {
         .setup(move |app| {
             log_error("Running setup...");
 
-            let remote_admin_state = remote_admin::RemoteAdminState::default();
-            remote_admin::start_server(app.handle().clone(), remote_admin_state.clone());
-            app.manage(remote_admin_state);
+            let app_handle = app.handle().clone();
+            let asset_resolver = app_handle.asset_resolver();
 
-            if let Err(error) = session::apply_startup_policy(is_autostart_launch) {
+            if let Err(error) = service_main::ensure_embedded_service(
+                Some(std::sync::Arc::new({
+                    let app_handle = app_handle.clone();
+                    move || {
+                        let _ = app_handle.emit("runtime-state-changed", ());
+                    }
+                })),
+                Some(std::sync::Arc::new(move |path| {
+                    asset_resolver
+                        .get(path.to_string())
+                        .map(|asset| service_main::RemoteAsset {
+                            bytes: asset.bytes,
+                            mime_type: asset.mime_type,
+                            csp_header: asset.csp_header,
+                        })
+                })),
+            ) {
+                log_error(&format!(
+                    "Failed to start embedded service runtime: {}",
+                    error
+                ));
+            }
+
+            if let Err(error) = control::apply_startup_policy(is_autostart_launch) {
                 log_error(&format!("Failed to apply startup policy: {}", error));
             }
 

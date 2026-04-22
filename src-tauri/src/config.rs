@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use std::fs;
+#[cfg(test)]
 use std::path::Path;
-use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
@@ -30,9 +31,15 @@ pub struct AppConfig {
     #[serde(default)]
     pub session_expired: bool,
     pub warning_notification_sent: bool,
+    #[serde(default = "default_remote_admin_enabled")]
+    pub remote_admin_enabled: bool,
 }
 
 fn default_session_start_pending() -> bool {
+    true
+}
+
+fn default_remote_admin_enabled() -> bool {
     true
 }
 
@@ -52,29 +59,12 @@ impl Default for AppConfig {
             pause_reason: None,
             session_expired: false,
             warning_notification_sent: false,
+            remote_admin_enabled: default_remote_admin_enabled(),
         }
     }
 }
 
-fn get_config_dir() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        let app_data = std::env::var("APPDATA")
-            .or_else(|_| std::env::var("USERPROFILE").map(|p| format!("{}\\AppData\\Roaming", p)))
-            .unwrap_or_else(|_| "C:\\ProgramData".to_string());
-        PathBuf::from(app_data).join("sessionizer")
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/var/opt".to_string());
-        PathBuf::from(home).join(".config").join("sessionizer")
-    }
-}
-
-fn get_config_path() -> PathBuf {
-    get_config_dir().join("config.json")
-}
-
+#[cfg(test)]
 fn load_config_from_path(path: &Path) -> Result<AppConfig, String> {
     if !path.exists() {
         return Ok(AppConfig::default());
@@ -89,7 +79,7 @@ fn load_config_from_path(path: &Path) -> Result<AppConfig, String> {
     validate_config(config).map_err(|e| format!("Invalid config at {}: {}", path.display(), e))
 }
 
-fn validate_config(config: AppConfig) -> Result<AppConfig, String> {
+pub(crate) fn validate_config(config: AppConfig) -> Result<AppConfig, String> {
     if config.timeout_minutes == 0 {
         return Err("screen time limit must be at least 1 minute".to_string());
     }
@@ -123,37 +113,10 @@ fn validate_config(config: AppConfig) -> Result<AppConfig, String> {
     Ok(config)
 }
 
-pub fn load_config() -> Result<AppConfig, String> {
-    load_config_from_path(&get_config_path())
-}
-
-pub fn save_config(config: &AppConfig) -> Result<(), String> {
-    let dir = get_config_dir();
-    if !dir.exists() {
-        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    }
-
-    let path = get_config_path();
-    let content = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
-    let temp_path = path.with_extension("json.tmp");
-
-    fs::write(&temp_path, content).map_err(|e| e.to_string())?;
-
-    if path.exists() {
-        fs::remove_file(&path).map_err(|e| e.to_string())?;
-    }
-
-    fs::rename(&temp_path, &path).map_err(|e| {
-        let _ = fs::remove_file(&temp_path);
-        e.to_string()
-    })?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_path(label: &str) -> PathBuf {

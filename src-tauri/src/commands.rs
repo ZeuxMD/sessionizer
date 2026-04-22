@@ -1,5 +1,5 @@
 use crate::control::{self, AdminSessionSnapshot, ExpiredActionStatus, FrontendConfig};
-use crate::remote_admin::{AdminPanelInfo, RemoteAdminState};
+use crate::remote_admin::AdminPanelInfo;
 use tauri::AppHandle;
 
 #[tauri::command]
@@ -111,10 +111,8 @@ pub fn get_admin_session_snapshot() -> Result<AdminSessionSnapshot, String> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_admin_panel_info(
-    state: tauri::State<'_, RemoteAdminState>,
-) -> Result<AdminPanelInfo, String> {
-    Ok(state.snapshot())
+pub fn get_admin_panel_info() -> Result<AdminPanelInfo, String> {
+    control::get_admin_panel_info()
 }
 
 #[tauri::command]

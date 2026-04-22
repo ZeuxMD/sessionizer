@@ -89,7 +89,10 @@ The built executable will be at `src-tauri/target/release/sessionizer.exe`.
 
 ## Configuration
 
-Config file location: `%APPDATA%/sessionizer/config.json`
+Machine state file location: `%ProgramData%/Sessionizer/device-state.json`
+
+Legacy installs that still use `%APPDATA%/sessionizer/config.json` are migrated to the
+machine-scoped state file automatically the next time the app starts.
 
 ```json
 {
@@ -100,10 +103,13 @@ Config file location: `%APPDATA%/sessionizer/config.json`
   "action": "shutdown",
   "autostart_enabled": true,
   "first_run_complete": true,
+  "session_start_pending": false,
   "timer_start_timestamp": null,
   "timer_paused_at": null,
   "pause_reason": null,
-  "warning_notification_sent": false
+  "session_expired": false,
+  "warning_notification_sent": false,
+  "remote_admin_enabled": true
 }
 ```
 

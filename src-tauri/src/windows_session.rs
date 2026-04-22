@@ -1,6 +1,7 @@
 #[cfg(target_os = "windows")]
 mod imp {
-    use crate::session::{classify_end_session, classify_power_broadcast, persist_signal};
+    use crate::control::persist_signal;
+    use crate::session::{classify_end_session, classify_power_broadcast};
     use tauri::{Runtime, WebviewWindow};
     use windows_sys::Win32::{
         Foundation::{HWND, LPARAM, LRESULT, WPARAM},

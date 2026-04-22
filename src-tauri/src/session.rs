@@ -1,6 +1,6 @@
+use crate::config::{AppConfig, PauseReason};
 use chrono::Utc;
-
-use crate::config::{load_config, save_config, AppConfig, PauseReason};
+use serde::{Deserialize, Serialize};
 
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub const ENDSESSION_LOGOFF_FLAG: usize = 0x8000_0000;
@@ -19,7 +19,8 @@ pub enum StartupAction {
 }
 
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SessionSignal {
     None,
     Suspend,
@@ -270,36 +271,6 @@ pub fn apply_signal(config: &mut AppConfig, signal: SessionSignal, now: u64) -> 
             }
 
             changed
-        }
-    }
-}
-
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-pub fn persist_signal(signal: SessionSignal) -> Result<(), String> {
-    if signal == SessionSignal::None {
-        return Ok(());
-    }
-
-    let mut config = load_config()?;
-    if apply_signal(&mut config, signal, current_timestamp()) {
-        save_config(&config)?;
-    }
-
-    Ok(())
-}
-
-pub fn apply_startup_policy(is_autostart_launch: bool) -> Result<(), String> {
-    let mut config = load_config()?;
-
-    match decide_startup_action(&config, is_autostart_launch) {
-        StartupAction::None => Ok(()),
-        StartupAction::Start => {
-            start_session(&mut config, current_timestamp());
-            save_config(&config)
-        }
-        StartupAction::Resume => {
-            resume_session(&mut config, current_timestamp());
-            save_config(&config)
         }
     }
 }
