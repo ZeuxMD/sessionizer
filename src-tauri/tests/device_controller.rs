@@ -59,3 +59,65 @@ fn locked_device_stays_locked_after_legacy_profile_config_is_deleted() {
     let _ = fs::remove_dir_all(legacy_root);
     let _ = fs::remove_dir_all(machine_root);
 }
+
+#[test]
+fn concurrent_updates_preserve_every_adjustment_and_the_saved_setup() {
+    let root = unique_dir("concurrent-updates");
+    let controller = DeviceController::new(StateStore::new(root.clone(), None));
+    controller
+        .setup_password("parent-secret".into(), 60)
+        .unwrap();
+    controller.finish_setup().unwrap();
+    controller.start_timer().unwrap();
+    let start = controller
+        .snapshot()
+        .unwrap()
+        .timer_start_timestamp
+        .unwrap();
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+    let threads: Vec<_> = (0..8)
+        .map(|_| {
+            // Separate store instances must coordinate, not just controller clones.
+            let controller = DeviceController::new(StateStore::new(root.clone(), None));
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                for _ in 0..30 {
+                    controller
+                        .adjust_time(1)
+                        .expect("concurrent update should succeed");
+                    let snapshot = controller.snapshot().unwrap();
+                    assert!(matches!(snapshot.session_state, AdminSessionState::Locked));
+                }
+            })
+        })
+        .collect();
+    for thread in threads {
+        thread.join().unwrap();
+    }
+    let snapshot = controller.snapshot().unwrap();
+    assert_eq!(snapshot.timer_start_timestamp, Some(start + 8 * 30 * 60));
+    assert!(controller.verify_local_unlock("parent-secret").unwrap());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn failed_save_preserves_existing_machine_state() {
+    let root = unique_dir("failed-save");
+    let controller = DeviceController::new(StateStore::new(root.clone(), None));
+    controller
+        .setup_password("parent-secret".into(), 60)
+        .unwrap();
+    controller.finish_setup().unwrap();
+    controller.start_timer().unwrap();
+    let before = fs::read(root.join("device-state.json")).unwrap();
+    // A directory at the staging path deterministically prevents writing a replacement.
+    fs::create_dir(root.join("device-state.json.tmp")).unwrap();
+    assert!(controller.adjust_time(10).is_err());
+    assert_eq!(fs::read(root.join("device-state.json")).unwrap(), before);
+    assert!(matches!(
+        controller.snapshot().unwrap().session_state,
+        AdminSessionState::Locked
+    ));
+    fs::remove_dir_all(root).unwrap();
+}

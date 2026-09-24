@@ -1,5 +1,5 @@
 use crate::device_controller::DeviceController;
-use crate::ipc::build_ipc_router;
+use crate::ipc::{build_ipc_router, ServiceClient};
 use crate::remote_admin::{build_remote_admin_router, AdminPanelInfo};
 use crate::session;
 use crate::state_store::StateStore;
@@ -19,7 +19,7 @@ const FAILED_LOGIN_THRESHOLD: usize = 5;
 const FAILED_LOGIN_THROTTLE_SECONDS: u64 = 60;
 const DEFAULT_IPC_PORT: u16 = 47_770;
 const DEFAULT_REMOTE_PORT: u16 = 47_771;
-static EMBEDDED_SERVICE_STARTED: OnceLock<()> = OnceLock::new();
+static EMBEDDED_SERVICE: OnceLock<ServiceHandle> = OnceLock::new();
 
 pub type TimeSource = Arc<dyn Fn() -> u64 + Send + Sync>;
 pub type StateChangedCallback = Arc<dyn Fn() + Send + Sync>;
@@ -36,14 +36,21 @@ pub struct RemoteAsset {
 pub struct ServiceState {
     pub controller: DeviceController,
     pub auth: ServiceAuthState,
+    desktop_token: String,
     on_state_changed: Option<StateChangedCallback>,
     remote_asset_loader: Option<RemoteAssetLoader>,
 }
 
 #[derive(Clone)]
+struct AuthorizedSession {
+    expires_at: u64,
+    password_hash: String,
+}
+
+#[derive(Clone)]
 pub struct ServiceAuthState {
-    remote_sessions: Arc<Mutex<HashMap<String, u64>>>,
-    local_sessions: Arc<Mutex<HashMap<String, u64>>>,
+    remote_sessions: Arc<Mutex<HashMap<String, AuthorizedSession>>>,
+    local_sessions: Arc<Mutex<HashMap<String, AuthorizedSession>>>,
     failed_remote_logins: Arc<Mutex<VecDeque<u64>>>,
     panel_info: Arc<Mutex<AdminPanelInfo>>,
     time_source: TimeSource,
@@ -67,6 +74,7 @@ pub struct ServicePorts {
 
 pub struct ServiceHandle {
     ports: ServicePorts,
+    desktop_token: String,
     shutdown: Option<watch::Sender<bool>>,
     thread: Option<JoinHandle<()>>,
 }
@@ -99,12 +107,24 @@ impl ServiceConfig {
 
 impl ServiceState {
     pub fn new(config: &ServiceConfig) -> Self {
+        Self::with_desktop_token(
+            config,
+            Alphanumeric.sample_string(&mut rand::thread_rng(), 48),
+        )
+    }
+
+    fn with_desktop_token(config: &ServiceConfig, desktop_token: String) -> Self {
         Self {
             controller: config.controller.clone(),
             auth: ServiceAuthState::new(config.time_source.clone()),
+            desktop_token,
             on_state_changed: config.on_state_changed.clone(),
             remote_asset_loader: config.remote_asset_loader.clone(),
         }
+    }
+
+    pub(crate) fn authorize_desktop(&self, token: &str) -> bool {
+        token == self.desktop_token
     }
 
     pub fn notify_state_changed(&self) {
@@ -139,20 +159,28 @@ impl ServiceAuthState {
         (self.time_source)()
     }
 
-    pub fn issue_remote_session(&self) -> (String, u64) {
-        self.issue_session(&self.remote_sessions, REMOTE_SESSION_TTL_SECONDS)
+    pub fn issue_remote_session(&self, password_hash: &str) -> (String, u64) {
+        self.issue_session(
+            &self.remote_sessions,
+            REMOTE_SESSION_TTL_SECONDS,
+            password_hash,
+        )
     }
 
-    pub fn issue_local_session(&self) -> (String, u64) {
-        self.issue_session(&self.local_sessions, LOCAL_SESSION_TTL_SECONDS)
+    pub fn issue_local_session(&self, password_hash: &str) -> (String, u64) {
+        self.issue_session(
+            &self.local_sessions,
+            LOCAL_SESSION_TTL_SECONDS,
+            password_hash,
+        )
     }
 
-    pub fn authorize_remote(&self, token: &str) -> bool {
-        self.authorize(&self.remote_sessions, token)
+    pub fn authorize_remote(&self, token: &str, password_hash: &str) -> bool {
+        self.authorize(&self.remote_sessions, token, password_hash)
     }
 
-    pub fn authorize_local(&self, token: &str) -> bool {
-        self.authorize(&self.local_sessions, token)
+    pub fn authorize_local(&self, token: &str, password_hash: &str) -> bool {
+        self.authorize(&self.local_sessions, token, password_hash)
     }
 
     pub fn revoke_remote(&self, token: &str) {
@@ -251,24 +279,36 @@ impl ServiceAuthState {
 
     fn issue_session(
         &self,
-        sessions: &Arc<Mutex<HashMap<String, u64>>>,
+        sessions: &Arc<Mutex<HashMap<String, AuthorizedSession>>>,
         ttl_seconds: u64,
+        password_hash: &str,
     ) -> (String, u64) {
         let now = self.now();
         let mut sessions = sessions.lock().expect("session lock poisoned");
-        sessions.retain(|_, expires_at| *expires_at > now);
+        sessions.retain(|_, session| session.expires_at > now);
 
         let token = Alphanumeric.sample_string(&mut rand::thread_rng(), 48);
         let expires_at = now.saturating_add(ttl_seconds);
-        sessions.insert(token.clone(), expires_at);
+        sessions.insert(
+            token.clone(),
+            AuthorizedSession {
+                expires_at,
+                password_hash: password_hash.to_string(),
+            },
+        );
         (token, expires_at)
     }
 
-    fn authorize(&self, sessions: &Arc<Mutex<HashMap<String, u64>>>, token: &str) -> bool {
+    fn authorize(
+        &self,
+        sessions: &Arc<Mutex<HashMap<String, AuthorizedSession>>>,
+        token: &str,
+        password_hash: &str,
+    ) -> bool {
         let now = self.now();
         let mut sessions = sessions.lock().expect("session lock poisoned");
-        sessions.retain(|_, expires_at| *expires_at > now);
-        matches!(sessions.get(token), Some(expires_at) if *expires_at > now)
+        sessions.retain(|_, session| session.expires_at > now);
+        matches!(sessions.get(token), Some(session) if session.expires_at > now && session.password_hash == password_hash)
     }
 }
 
@@ -277,6 +317,8 @@ impl ServiceHandle {
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
+        let desktop_token = Alphanumeric.sample_string(&mut rand::thread_rng(), 48);
+        let server_token = desktop_token.clone();
         let thread = std::thread::spawn(move || {
             let runtime = Builder::new_multi_thread()
                 .enable_all()
@@ -284,7 +326,7 @@ impl ServiceHandle {
                 .expect("failed to build service runtime");
 
             runtime.block_on(async move {
-                let service_state = ServiceState::new(&config);
+                let service_state = ServiceState::with_desktop_token(&config, server_token);
 
                 let ipc_listener = match TcpListener::bind(config.ipc_bind).await {
                     Ok(listener) => listener,
@@ -391,6 +433,7 @@ impl ServiceHandle {
 
         Ok(Self {
             ports,
+            desktop_token,
             shutdown: Some(shutdown_tx),
             thread: Some(thread),
         })
@@ -398,6 +441,10 @@ impl ServiceHandle {
 
     pub fn ports(&self) -> ServicePorts {
         self.ports
+    }
+
+    pub fn ipc_client(&self) -> Result<ServiceClient, String> {
+        Ok(ServiceClient::new(self.ipc_base_url())?.with_desktop_token(self.desktop_token.clone()))
     }
 
     pub fn ipc_base_url(&self) -> String {
@@ -433,15 +480,8 @@ pub fn ensure_embedded_service(
     on_state_changed: Option<StateChangedCallback>,
     remote_asset_loader: Option<RemoteAssetLoader>,
 ) -> Result<(), String> {
-    if EMBEDDED_SERVICE_STARTED.get().is_some() {
+    if EMBEDDED_SERVICE.get().is_some() {
         return Ok(());
-    }
-
-    if let Ok(client) = crate::ipc::ServiceClient::default_local() {
-        if client.snapshot().is_ok() {
-            let _ = EMBEDDED_SERVICE_STARTED.set(());
-            return Ok(());
-        }
     }
 
     let config = ServiceConfig {
@@ -449,10 +489,18 @@ pub fn ensure_embedded_service(
         remote_asset_loader,
         ..ServiceConfig::default()
     };
+    // Only trust the service we created. A process listening on the expected
+    // port cannot establish trust by returning a plausible snapshot.
     let handle = ServiceHandle::spawn(config)?;
-    let _ = EMBEDDED_SERVICE_STARTED.set(());
-    std::mem::forget(handle);
+    let _ = EMBEDDED_SERVICE.set(handle);
     Ok(())
+}
+
+pub(crate) fn embedded_client() -> Result<ServiceClient, String> {
+    EMBEDDED_SERVICE
+        .get()
+        .ok_or_else(|| "Embedded service is unavailable".to_string())?
+        .ipc_client()
 }
 
 pub fn base_url(address: SocketAddr) -> String {

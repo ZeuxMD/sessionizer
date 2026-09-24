@@ -16,6 +16,14 @@ function invokeCommand<T>(
   return invoke<T>(command, args);
 }
 
+export function requiresLocalAuthorization(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message === "Local authorization required" ||
+    message.startsWith("Service request failed (401):")
+  );
+}
+
 export function getConfig() {
   return invokeCommand<import("./bindings").FrontendConfig>("get_config");
 }

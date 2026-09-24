@@ -113,9 +113,8 @@ pub fn get_remaining_seconds_at(config: &AppConfig, now: u64) -> Option<u64> {
         } else {
             now
         };
-        let elapsed = effective_now.saturating_sub(start_timestamp);
-
-        total_seconds.saturating_sub(elapsed)
+        let deadline = start_timestamp.saturating_add(total_seconds);
+        deadline.saturating_sub(effective_now)
     })
 }
 

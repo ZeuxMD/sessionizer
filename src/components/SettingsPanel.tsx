@@ -4,11 +4,13 @@ import {
   getConfig,
   updateSettings,
   changePassword,
+  requiresLocalAuthorization,
   type AdminPanelInfo,
   type FrontendConfig,
 } from "../lib/invoke";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { listen } from "@tauri-apps/api/event";
+import { PasswordInput } from "./PasswordInput";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -30,6 +32,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [warning, setWarning] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [needsAuthorization, setNeedsAuthorization] = useState(false);
   const closeTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -142,12 +145,37 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           onClose();
         }, 1000);
       }
-    } catch {
-      setError("Failed to save settings");
+    } catch (error) {
+      if (requiresLocalAuthorization(error)) {
+        setNeedsAuthorization(true);
+      } else {
+        setError("Failed to save settings");
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  if (needsAuthorization) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-slate-800 rounded-2xl p-8 max-w-sm w-full">
+          <h2 className="text-xl font-bold mb-4">Confirm Settings</h2>
+          <p className="text-slate-400 mb-6">
+            Enter your password again to save. Your edits are still here.
+          </p>
+          <PasswordInput
+            submitLabel="Save Settings"
+            onCancel={() => setNeedsAuthorization(false)}
+            onSuccess={async () => {
+              setNeedsAuthorization(false);
+              await handleSave();
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">

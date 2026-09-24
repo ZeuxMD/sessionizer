@@ -1,5 +1,6 @@
 use crate::config::{validate_config, AppConfig};
-use std::fs;
+use std::fs::{self, File};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const MACHINE_STATE_FILE: &str = "device-state.json";
@@ -46,6 +47,40 @@ impl StateStore {
     }
 
     pub fn load(&self) -> Result<AppConfig, String> {
+        let _lock = self.lock()?;
+        self.load_locked()
+    }
+
+    /// Keep the read, mutation, and replacement under one machine-wide lock.
+    pub fn update<T>(
+        &self,
+        mutator: impl FnOnce(&mut AppConfig) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let _lock = self.lock()?;
+        let mut config = self.load_locked()?;
+        let previous = config.clone();
+        let result = mutator(&mut config)?;
+        if config != previous {
+            self.save_locked(&config)?;
+        }
+        Ok(result)
+    }
+
+    fn lock(&self) -> Result<File, String> {
+        fs::create_dir_all(&self.machine_root).map_err(|error| error.to_string())?;
+        // Lock a separate, stable file: the state file itself is replaced on save.
+        let lock = File::options()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(self.machine_config_path().with_extension("lock"))
+            .map_err(|error| error.to_string())?;
+        lock.lock().map_err(|error| error.to_string())?;
+        Ok(lock)
+    }
+
+    fn load_locked(&self) -> Result<AppConfig, String> {
         let machine_path = self.machine_config_path();
         if machine_path.exists() {
             return load_config_from_path(&machine_path);
@@ -54,7 +89,7 @@ impl StateStore {
         if let Some(legacy_path) = self.legacy_config_path() {
             if legacy_path.exists() {
                 let config = load_config_from_path(&legacy_path)?;
-                self.save(&config)?;
+                self.save_locked(&config)?;
                 return Ok(config);
             }
         }
@@ -63,6 +98,11 @@ impl StateStore {
     }
 
     pub fn save(&self, config: &AppConfig) -> Result<(), String> {
+        let _lock = self.lock()?;
+        self.save_locked(config)
+    }
+
+    fn save_locked(&self, config: &AppConfig) -> Result<(), String> {
         let config = validate_config(config.clone())?;
         write_config_atomic(&self.machine_config_path(), &config)
     }
@@ -130,16 +170,17 @@ fn write_config_atomic(path: &Path, config: &AppConfig) -> Result<(), String> {
     let content = serde_json::to_string_pretty(config).map_err(|error| error.to_string())?;
     let temp_path = path.with_extension("json.tmp");
 
-    fs::write(&temp_path, content).map_err(|error| error.to_string())?;
-
-    if path.exists() {
-        fs::remove_file(path).map_err(|error| error.to_string())?;
-    }
-
-    fs::rename(&temp_path, path).map_err(|error| {
+    let result = (|| -> std::io::Result<()> {
+        let mut temp_file = File::create(&temp_path)?;
+        temp_file.write_all(content.as_bytes())?;
+        temp_file.sync_all()?;
+        drop(temp_file);
+        // rename replaces the destination on both Windows and Unix. Never unlink
+        // the durable state first: failed replacement must leave it intact.
+        fs::rename(&temp_path, path)
+    })();
+    if result.is_err() {
         let _ = fs::remove_file(&temp_path);
-        error.to_string()
-    })?;
-
-    Ok(())
+    }
+    result.map_err(|error| error.to_string())
 }

@@ -48,8 +48,7 @@ impl TestService {
         configure(&mut config);
         let handle = ServiceHandle::spawn(config).expect("service should start");
 
-        let ipc_client =
-            ServiceClient::new(handle.ipc_base_url()).expect("ipc client should build");
+        let ipc_client = handle.ipc_client().expect("ipc client should build");
 
         Self {
             remote_base_url: handle.remote_base_url(),
@@ -370,5 +369,181 @@ fn remote_admin_bind_failure_keeps_local_ipc_available() {
     assert!(matches!(
         snapshot.session_state,
         AdminSessionState::Unlocked
+    ));
+}
+
+#[test]
+fn completed_setup_cannot_be_overwritten() {
+    let service = TestService::start(Arc::new(AtomicU64::new(10_000)));
+    service.prime_locked_device();
+    assert!(service
+        .ipc_client
+        .setup_password("replacement-secret".into(), 180)
+        .is_err());
+    let snapshot = service.ipc_client.snapshot().unwrap();
+    assert!(matches!(snapshot.session_state, AdminSessionState::Locked));
+    assert!(service.ipc_client.local_login("parent-secret").is_ok());
+    assert!(service
+        .ipc_client
+        .local_login("replacement-secret")
+        .is_err());
+}
+
+#[test]
+fn local_http_requests_require_desktop_credentials() {
+    let service = TestService::start(Arc::new(AtomicU64::new(10_000)));
+    service.prime_locked_device();
+    for (path, body) in [
+        ("persist-signal", serde_json::json!({"signal":"shutdown"})),
+        ("persist-signal", serde_json::json!({"signal":"suspend"})),
+        (
+            "setup-password",
+            serde_json::json!({"password":"replacement-secret", "timeoutMinutes":180}),
+        ),
+        ("start-timer", serde_json::Value::Null),
+        ("relock", serde_json::Value::Null),
+    ] {
+        let response = service
+            .http_client
+            .post(format!("{}/{path}", service._handle.ipc_base_url()))
+            .json(&body)
+            .send()
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{path}");
+    }
+    assert!(matches!(
+        service.ipc_client.snapshot().unwrap().session_state,
+        AdminSessionState::Locked
+    ));
+}
+
+#[test]
+fn password_changes_invalidate_existing_remote_and_local_tokens() {
+    let service = TestService::start(Arc::new(AtomicU64::new(10_000)));
+    service.prime_locked_device();
+    let remote: LoginResponse = remote_login(&service, "parent-secret").json().unwrap();
+    let local = service.ipc_client.local_login("parent-secret").unwrap();
+    assert!(service
+        .ipc_client
+        .change_password(
+            "parent-secret".into(),
+            "new-parent-secret".into(),
+            &local.token
+        )
+        .unwrap());
+    let response = service
+        .http_client
+        .post(format!("{}/api/unlock", service.remote_base_url))
+        .bearer_auth(&remote.token)
+        .send()
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        service.ipc_client.unlock(&local.token).unwrap_err().status,
+        Some(401)
+    );
+    let renewed = service.ipc_client.local_login("new-parent-secret").unwrap();
+    service
+        .ipc_client
+        .update_settings(
+            SettingsUpdate {
+                timeout_minutes: Some(90),
+                ..Default::default()
+            },
+            &renewed.token,
+        )
+        .unwrap();
+}
+
+#[test]
+fn password_recovery_invalidates_existing_remote_tokens() {
+    let service = TestService::start(Arc::new(AtomicU64::new(10_000)));
+    let key = service
+        .ipc_client
+        .setup_password("parent-secret".into(), 60)
+        .unwrap();
+    service.ipc_client.finish_setup().unwrap();
+    service.ipc_client.start_timer().unwrap();
+    let remote: LoginResponse = remote_login(&service, "parent-secret").json().unwrap();
+    assert!(service
+        .ipc_client
+        .reset_password_with_recovery(key, "new-parent-secret".into())
+        .unwrap());
+    let response = service
+        .http_client
+        .post(format!("{}/api/unlock", service.remote_base_url))
+        .bearer_auth(&remote.token)
+        .send()
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[test]
+fn authenticated_desktop_can_persist_system_signals() {
+    let service = TestService::start(Arc::new(AtomicU64::new(10_000)));
+    service.prime_locked_device();
+    service
+        .ipc_client
+        .persist_signal(serde_json::from_str("\"suspend\"").unwrap())
+        .unwrap();
+    assert!(matches!(
+        service.ipc_client.snapshot().unwrap().session_state,
+        AdminSessionState::Paused
+    ));
+    service
+        .ipc_client
+        .persist_signal(serde_json::from_str("\"resume_system\"").unwrap())
+        .unwrap();
+    assert!(matches!(
+        service.ipc_client.snapshot().unwrap().session_state,
+        AdminSessionState::Locked
+    ));
+}
+
+#[test]
+fn expired_settings_authorization_can_be_renewed_without_losing_settings() {
+    let now = Arc::new(AtomicU64::new(10_000));
+    let service = TestService::start(now.clone());
+    service.prime_locked_device();
+    let auth = service.ipc_client.local_login("parent-secret").unwrap();
+    now.store(auth.expires_at + 1, Ordering::SeqCst);
+    let update = SettingsUpdate {
+        timeout_minutes: Some(90),
+        ..Default::default()
+    };
+    assert_eq!(
+        service
+            .ipc_client
+            .update_settings(update.clone(), &auth.token)
+            .unwrap_err()
+            .status,
+        Some(401)
+    );
+    assert_eq!(service.ipc_client.snapshot().unwrap().timeout_minutes, 60);
+    let renewed = service.ipc_client.local_login("parent-secret").unwrap();
+    let snapshot = service
+        .ipc_client
+        .update_settings(update, &renewed.token)
+        .unwrap();
+    assert_eq!(snapshot.timeout_minutes, 90);
+}
+
+#[test]
+fn incorrect_desktop_credentials_cannot_read_or_mutate_state() {
+    let service = TestService::start(Arc::new(AtomicU64::new(10_000)));
+    service.prime_locked_device();
+    let response = service
+        .http_client
+        .post(format!("{}/persist-signal", service._handle.ipc_base_url()))
+        .header("x-sessionizer-desktop-token", "wrong-token")
+        .json(&serde_json::json!({"signal":"shutdown"}))
+        .send()
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let untrusted = ServiceClient::new(service._handle.ipc_base_url()).unwrap();
+    assert_eq!(untrusted.snapshot().unwrap_err().status, Some(401));
+    assert!(matches!(
+        service.ipc_client.snapshot().unwrap().session_state,
+        AdminSessionState::Locked
     ));
 }

@@ -181,7 +181,10 @@ fn require_remote_auth(headers: &HeaderMap, state: &ServiceState) -> Result<Stri
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "Authentication required".to_string())?;
 
-    if state.auth.authorize_remote(token) {
+    if state
+        .auth
+        .authorize_remote(token, &state.controller.password_hash()?)
+    {
         Ok(token.to_string())
     } else {
         Err("Admin session expired or is invalid".to_string())
@@ -256,11 +259,11 @@ async fn login(State(state): State<ServiceState>, Json(payload): Json<LoginReque
         return response;
     }
 
-    match state.controller.admin_login(&payload.password) {
-        Ok(true) => match state.controller.snapshot() {
+    match state.controller.authenticate(&payload.password) {
+        Ok(Some(password_hash)) => match state.controller.snapshot() {
             Ok(session) => {
                 state.auth.clear_failed_remote_logins();
-                let (token, expires_at) = state.auth.issue_remote_session();
+                let (token, expires_at) = state.auth.issue_remote_session(&password_hash);
                 Json(LoginResponse {
                     token,
                     expires_at,
@@ -271,7 +274,7 @@ async fn login(State(state): State<ServiceState>, Json(payload): Json<LoginReque
             }
             Err(error) => json_error(StatusCode::INTERNAL_SERVER_ERROR, error),
         },
-        Ok(false) => {
+        Ok(None) => {
             state.auth.record_failed_remote_login();
             json_error(StatusCode::UNAUTHORIZED, "Incorrect password")
         }

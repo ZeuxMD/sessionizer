@@ -1,8 +1,12 @@
 import { useState } from "react";
-import { verifyRecoveryKey, resetPasswordWithRecovery } from "../lib/invoke";
+import {
+  verifyRecoveryKey,
+  resetPasswordWithRecovery,
+  verifyPassword,
+} from "../lib/invoke";
 
 interface RecoveryPromptProps {
-  onRecovered: () => void;
+  onRecovered: () => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -59,7 +63,13 @@ export function RecoveryPrompt({ onRecovered, onCancel }: RecoveryPromptProps) {
     try {
       const reset = await resetPasswordWithRecovery(key, newPassword);
       if (reset) {
-        onRecovered();
+        if (!(await verifyPassword(newPassword))) {
+          setError(
+            "Password was reset, but Sessionizer could not authorize the unlock. Try again.",
+          );
+          return;
+        }
+        await onRecovered();
       } else {
         setError("Invalid recovery key");
         setStep("verify");

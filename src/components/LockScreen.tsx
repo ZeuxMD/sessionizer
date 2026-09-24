@@ -6,7 +6,7 @@ import { RecoveryPrompt } from "./RecoveryPrompt";
 import { useCountdown } from "../hooks/useCountdown";
 
 interface LockScreenProps {
-  onUnlock: () => void;
+  onUnlock: () => void | Promise<void>;
   onPause: () => void;
   timeoutMinutes: number;
   warningMinutes: number;
@@ -28,9 +28,9 @@ export function LockScreen({
     warningMinutes,
   );
 
-  const handleRecoverySuccess = () => {
+  const handleRecoverySuccess = async () => {
+    await onUnlock();
     setShowRecovery(false);
-    onUnlock();
   };
 
   return (

@@ -4,9 +4,10 @@ use crate::device_controller::{
 use crate::remote_admin::AdminPanelInfo;
 use crate::service_main::ServiceState;
 use crate::session::SessionSignal;
-use axum::extract::State;
+use axum::extract::{Request, State};
 use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, Method, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -31,6 +32,7 @@ pub struct ServiceClientError {
 pub struct ServiceClient {
     base_url: String,
     client: Client,
+    desktop_token: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -121,12 +123,34 @@ pub fn build_ipc_router(state: ServiceState) -> Router {
         .route("/execute-expired-action", post(execute_expired_action))
         .route("/persist-signal", post(persist_signal))
         .route("/apply-startup-policy", post(apply_startup_policy))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_desktop_auth,
+        ))
         .with_state(state)
+}
+
+async fn require_desktop_auth(
+    State(state): State<ServiceState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let authorized = request
+        .headers()
+        .get("x-sessionizer-desktop-token")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|token| state.authorize_desktop(token));
+    if !authorized {
+        return json_error(StatusCode::UNAUTHORIZED, "Desktop authorization required");
+    }
+    next.run(request).await
 }
 
 impl ServiceClient {
     pub fn new(base_url: impl Into<String>) -> Result<Self, String> {
         let client = Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(5))
             .build()
             .map_err(|error| error.to_string())?;
@@ -134,13 +158,13 @@ impl ServiceClient {
         Ok(Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             client,
+            desktop_token: None,
         })
     }
 
-    pub fn default_local() -> Result<Self, String> {
-        let base_url = std::env::var("SESSIONIZER_SERVICE_IPC_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:47770".to_string());
-        Self::new(base_url)
+    pub(crate) fn with_desktop_token(mut self, token: String) -> Self {
+        self.desktop_token = Some(token);
+        self
     }
 
     pub fn frontend_config(&self) -> Result<FrontendConfig, ServiceClientError> {
@@ -330,6 +354,10 @@ impl ServiceClient {
             .client
             .request(method, format!("{}{}", self.base_url, path));
 
+        if let Some(desktop_token) = &self.desktop_token {
+            request = request.header("x-sessionizer-desktop-token", desktop_token);
+        }
+
         if let Some(token) = token {
             request = request.header(AUTHORIZATION.as_str(), format!("Bearer {token}"));
         }
@@ -395,7 +423,10 @@ fn require_local_auth(headers: &HeaderMap, state: &ServiceState) -> Result<Strin
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "Local authorization required".to_string())?;
 
-    if state.auth.authorize_local(token) {
+    if state
+        .auth
+        .authorize_local(token, &state.controller.password_hash()?)
+    {
         Ok(token.to_string())
     } else {
         Err("Local authorization expired or is invalid".to_string())
@@ -469,12 +500,12 @@ async fn local_login(
         return json_error(StatusCode::UNAUTHORIZED, "Password is required");
     }
 
-    match state.controller.verify_local_unlock(&payload.secret) {
-        Ok(true) => {
-            let (token, expires_at) = state.auth.issue_local_session();
+    match state.controller.authenticate(&payload.secret) {
+        Ok(Some(password_hash)) => {
+            let (token, expires_at) = state.auth.issue_local_session(&password_hash);
             Json(AuthToken { token, expires_at }).into_response()
         }
-        Ok(false) => json_error(StatusCode::UNAUTHORIZED, "Incorrect password"),
+        Ok(None) => json_error(StatusCode::UNAUTHORIZED, "Incorrect password"),
         Err(error) => json_error(StatusCode::INTERNAL_SERVER_ERROR, error),
     }
 }

@@ -29,7 +29,7 @@ A Windows desktop application for parental screen-time management. Sessionizer l
 
 - Node.js (LTS)
 - pnpm
-- Rust toolchain
+- Rust 1.89 or newer
 - Windows OS
 
 ### Build from Source
@@ -86,6 +86,12 @@ The built executable will be at `src-tauri/target/release/sessionizer.exe`.
 1. Click "Forgot password?" on the session panel
 2. Enter the 16-character recovery key
 3. Set a new password
+
+Recovery signs in with the new password and unlocks the current session. Changing
+or recovering the password invalidates existing admin logins.
+
+If authorization expires while editing Settings, enter the password again when
+prompted. Your unsaved edits are preserved.
 
 ## Configuration
 

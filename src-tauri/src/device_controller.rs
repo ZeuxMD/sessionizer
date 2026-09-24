@@ -95,29 +95,22 @@ impl DeviceController {
         validate_password(&password)?;
         validate_timeout_minutes(timeout_minutes)?;
 
-        let recovery_key = generate_recovery_key();
-        let password_hash = hash_password(&password)?;
-        let recovery_key_hash = hash_password(&recovery_key)?;
-
-        let config = AppConfig {
-            password_hash,
-            recovery_key_hash,
-            timeout_minutes,
-            warning_minutes: 5,
-            action: "shutdown".to_string(),
-            autostart_enabled: true,
-            first_run_complete: false,
-            session_start_pending: true,
-            timer_start_timestamp: None,
-            timer_paused_at: None,
-            pause_reason: None,
-            session_expired: false,
-            warning_notification_sent: false,
-            remote_admin_enabled: true,
-        };
-
-        self.store.save(&config)?;
-        Ok(recovery_key)
+        self.store.update(|config| {
+            if config.first_run_complete {
+                return Err(
+                    "Setup is already complete. Use password recovery to reset the password."
+                        .to_string(),
+                );
+            }
+            let recovery_key = generate_recovery_key();
+            *config = AppConfig {
+                password_hash: hash_password(&password)?,
+                recovery_key_hash: hash_password(&recovery_key)?,
+                timeout_minutes,
+                ..AppConfig::default()
+            };
+            Ok(recovery_key)
+        })
     }
 
     pub fn finish_setup(&self) -> Result<(), String> {
@@ -128,12 +121,18 @@ impl DeviceController {
     }
 
     pub fn verify_local_unlock(&self, secret: &str) -> Result<bool, String> {
-        let config = self.store.load()?;
-        verify_pwd(secret, &config.password_hash)
+        Ok(self.authenticate(secret)?.is_some())
     }
 
-    pub fn admin_login(&self, secret: &str) -> Result<bool, String> {
-        self.verify_local_unlock(secret)
+    pub(crate) fn password_hash(&self) -> Result<String, String> {
+        Ok(self.store.load()?.password_hash)
+    }
+
+    /// Return the exact credential verified, so a concurrent password change
+    /// cannot give an old login a session authorized by the new password.
+    pub(crate) fn authenticate(&self, secret: &str) -> Result<Option<String>, String> {
+        let hash = self.password_hash()?;
+        Ok(verify_pwd(secret, &hash)?.then_some(hash))
     }
 
     pub fn verify_recovery_key(&self, key: String) -> Result<bool, String> {
@@ -148,27 +147,24 @@ impl DeviceController {
     ) -> Result<bool, String> {
         validate_password(&new_password)?;
 
-        let mut config = self.store.load()?;
-        if !verify_pwd(&key, &config.recovery_key_hash)? {
-            return Ok(false);
-        }
-
-        config.password_hash = hash_password(&new_password)?;
-        self.store.save(&config)?;
-        Ok(true)
+        self.store.update(|config| {
+            if !verify_pwd(&key, &config.recovery_key_hash)? {
+                return Ok(false);
+            }
+            config.password_hash = hash_password(&new_password)?;
+            Ok(true)
+        })
     }
 
     pub fn change_password(&self, current: String, new_password: String) -> Result<bool, String> {
         validate_password(&new_password)?;
-
-        let mut config = self.store.load()?;
-        if !verify_pwd(&current, &config.password_hash)? {
-            return Ok(false);
-        }
-
-        config.password_hash = hash_password(&new_password)?;
-        self.store.save(&config)?;
-        Ok(true)
+        self.store.update(|config| {
+            if !verify_pwd(&current, &config.password_hash)? {
+                return Ok(false);
+            }
+            config.password_hash = hash_password(&new_password)?;
+            Ok(true)
+        })
     }
 
     pub fn unlock(&self) -> Result<(), String> {
@@ -213,49 +209,40 @@ impl DeviceController {
             .checked_mul(60)
             .ok_or_else(|| "Time adjustment overflowed".to_string())?;
 
-        let mut config = self.store.load()?;
-        let updated = session::adjust_remaining_seconds(
-            &mut config,
-            delta_seconds,
-            session::current_timestamp(),
-        );
-
-        if updated.is_none() {
-            return Err("Only active, non-expired sessions can be adjusted".to_string());
-        }
-
-        self.store.save(&config)?;
-        Ok(build_admin_session_snapshot(config))
+        self.store.update(|config| {
+            session::adjust_remaining_seconds(config, delta_seconds, session::current_timestamp())
+                .ok_or_else(|| "Only active, non-expired sessions can be adjusted".to_string())?;
+            Ok(build_admin_session_snapshot(config.clone()))
+        })
     }
 
     pub fn update_settings(&self, update: SettingsUpdate) -> Result<AdminSessionSnapshot, String> {
-        let mut config = self.store.load()?;
+        self.store.update(|config| {
+            if let Some(timeout_minutes) = update.timeout_minutes {
+                validate_timeout_minutes(timeout_minutes)?;
+                config.timeout_minutes = timeout_minutes;
+            }
 
-        if let Some(timeout_minutes) = update.timeout_minutes {
-            validate_timeout_minutes(timeout_minutes)?;
-            config.timeout_minutes = timeout_minutes;
-        }
+            if let Some(warning_minutes) = update.warning_minutes {
+                validate_warning_minutes(warning_minutes)?;
+                config.warning_minutes = warning_minutes;
+            }
 
-        if let Some(warning_minutes) = update.warning_minutes {
-            validate_warning_minutes(warning_minutes)?;
-            config.warning_minutes = warning_minutes;
-        }
+            if let Some(action) = update.action {
+                validate_action(&action)?;
+                config.action = action;
+            }
 
-        if let Some(action) = update.action {
-            validate_action(&action)?;
-            config.action = action;
-        }
+            if let Some(autostart_enabled) = update.autostart_enabled {
+                config.autostart_enabled = autostart_enabled;
+            }
 
-        if let Some(autostart_enabled) = update.autostart_enabled {
-            config.autostart_enabled = autostart_enabled;
-        }
+            if let Some(remote_admin_enabled) = update.remote_admin_enabled {
+                config.remote_admin_enabled = remote_admin_enabled;
+            }
 
-        if let Some(remote_admin_enabled) = update.remote_admin_enabled {
-            config.remote_admin_enabled = remote_admin_enabled;
-        }
-
-        self.store.save(&config)?;
-        Ok(build_admin_session_snapshot(config))
+            Ok(build_admin_session_snapshot(config.clone()))
+        })
     }
 
     pub fn remaining_seconds(&self) -> Result<Option<u64>, String> {
@@ -270,17 +257,19 @@ impl DeviceController {
     }
 
     pub fn execute_expired_action(&self) -> Result<ExpiredActionStatus, String> {
-        let mut config = self.store.load()?;
-
-        if config.timer_start_timestamp.is_none() || config.session_expired {
+        let action = self.store.update(|config| {
+            if config.timer_paused_at.is_some()
+                || session::get_remaining_seconds(config) != Some(0)
+                || !session::expire_session(config)
+            {
+                return Ok(None);
+            }
+            Ok(Some(config.action.clone()))
+        })?;
+        let Some(action) = action else {
             return Ok(ExpiredActionStatus::NoActionNeeded);
-        }
-
-        if session::expire_session(&mut config) {
-            self.store.save(&config)?;
-        }
-
-        match execute_action(&config.action) {
+        };
+        match execute_action(&action) {
             Ok(()) => Ok(ExpiredActionStatus::ActionStarted),
             Err(_) => Ok(ExpiredActionStatus::LockedOnFailure),
         }
@@ -295,37 +284,32 @@ impl DeviceController {
             return Ok(());
         }
 
-        let mut config = self.store.load()?;
-        if session::apply_signal(&mut config, signal, session::current_timestamp()) {
-            self.store.save(&config)?;
-        }
-
-        Ok(())
+        self.update_config(|config| {
+            session::apply_signal(config, signal, session::current_timestamp());
+            Ok(())
+        })
     }
 
     pub fn apply_startup_policy(&self, is_autostart_launch: bool) -> Result<(), String> {
-        let mut config = self.store.load()?;
-
-        match session::decide_startup_action(&config, is_autostart_launch) {
-            StartupAction::None => Ok(()),
-            StartupAction::Start => {
-                session::start_session(&mut config, session::current_timestamp());
-                self.store.save(&config)
+        self.update_config(|config| {
+            match session::decide_startup_action(config, is_autostart_launch) {
+                StartupAction::None => {}
+                StartupAction::Start => {
+                    session::start_session(config, session::current_timestamp())
+                }
+                StartupAction::Resume => {
+                    session::resume_session(config, session::current_timestamp());
+                }
             }
-            StartupAction::Resume => {
-                session::resume_session(&mut config, session::current_timestamp());
-                self.store.save(&config)
-            }
-        }
+            Ok(())
+        })
     }
 
     fn update_config(
         &self,
         mutator: impl FnOnce(&mut AppConfig) -> Result<(), String>,
     ) -> Result<(), String> {
-        let mut config = self.store.load()?;
-        mutator(&mut config)?;
-        self.store.save(&config)
+        self.store.update(mutator)
     }
 }
 

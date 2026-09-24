@@ -59,3 +59,44 @@ fn restart_session_clears_pause_and_warning_state() {
     assert_eq!(config.pause_reason, None);
     assert!(!config.warning_notification_sent);
 }
+
+#[test]
+fn added_time_above_the_original_limit_counts_down_immediately() {
+    let mut config = AppConfig {
+        timeout_minutes: 60,
+        ..AppConfig::default()
+    };
+    session::start_session(&mut config, 10_000);
+    assert_eq!(
+        session::adjust_remaining_seconds(&mut config, 30 * 60, 10_600),
+        Some(80 * 60)
+    );
+    assert_eq!(
+        session::get_remaining_seconds_at(&config, 11_200),
+        Some(70 * 60)
+    );
+    assert_eq!(session::get_remaining_seconds_at(&config, 15_400), Some(0));
+}
+
+#[test]
+fn added_time_above_the_limit_survives_pause_and_resume() {
+    let mut config = AppConfig {
+        timeout_minutes: 60,
+        ..AppConfig::default()
+    };
+    session::start_session(&mut config, 10_000);
+    session::pause_session(&mut config, PauseReason::Manual, 10_600);
+    assert_eq!(
+        session::adjust_remaining_seconds(&mut config, 30 * 60, 11_000),
+        Some(80 * 60)
+    );
+    assert_eq!(
+        session::get_remaining_seconds_at(&config, 12_000),
+        Some(80 * 60)
+    );
+    session::resume_session(&mut config, 12_000);
+    assert_eq!(
+        session::get_remaining_seconds_at(&config, 12_060),
+        Some(79 * 60)
+    );
+}

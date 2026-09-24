@@ -13,7 +13,7 @@ fn client() -> Result<&'static ServiceClient, String> {
         return Ok(client);
     }
 
-    let created = ServiceClient::default_local()?;
+    let created = crate::service_main::embedded_client()?;
     let _ = CLIENT.set(created);
     CLIENT
         .get()
@@ -131,7 +131,18 @@ pub fn reset_password_with_recovery(key: String, new_password: String) -> Result
 }
 
 pub fn change_password(current: String, new_password: String) -> Result<bool, String> {
-    with_local_auth(|client, token| client.change_password(current, new_password, token))
+    let changed = with_local_auth(|client, token| {
+        client.change_password(current, new_password.clone(), token)
+    })?;
+    if changed {
+        // The previous token is bound to the old password. Refresh it so the
+        // remaining settings save can continue with the new credentials.
+        set_local_auth_token(None);
+        if !verify_password(new_password)? {
+            return Err("Local authorization required".to_string());
+        }
+    }
+    Ok(changed)
 }
 
 pub fn start_timer() -> Result<(), String> {
